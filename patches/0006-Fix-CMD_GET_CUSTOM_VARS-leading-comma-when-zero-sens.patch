@@ -1,0 +1,48 @@
+From 6b92b7872ae8cb3846c01da75006f959842bb99a Mon Sep 17 00:00:00 2001
+From: GNB Build <palimpseste@quidam.eu>
+Date: Sat, 29 Aug 2026 20:19:55 +0200
+Subject: [PATCH 6/7] Fix CMD_GET_CUSTOM_VARS leading comma when zero sensor
+ settings
+
+The DUAL_BLE_WIFI block appending wifi_ssid/wifi_enabled always wrote
+a leading comma before the first key, assuming the sensor loop above
+had already written something. When getNumSettings() returns 0 (no
+sensors configured), dp is still at the start of the buffer, so the
+unconditional comma produced an empty first field.
+
+Confirmed on real hardware (Heltec V4.3, 29/08/2026): meshcore-cli's
+"get custom" over USB crashed with IndexError in reader.py, raw frame
+decoded to "\x15,wifi_ssid:,wifi_enabled:0" -- the leading comma had
+nothing before it.
+
+Fix mirrors the existing "if (i > 0)" guard used by the sensor loop:
+only emit the separator if dp has already advanced past the buffer
+start.
+
+Verified after fix: get/set roundtrip via meshcore-cli over USB
+(COM46), and real WiFi connection with live on/off toggle from the
+screen WIFI page (no reboot), IP obtained successfully.
+---
+ examples/companion_radio/MyMesh.cpp | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/examples/companion_radio/MyMesh.cpp b/examples/companion_radio/MyMesh.cpp
+index 5c9f996f..dc915bbd 100644
+--- a/examples/companion_radio/MyMesh.cpp
++++ b/examples/companion_radio/MyMesh.cpp
+@@ -1819,7 +1819,14 @@ void MyMesh::handleCmdFrame(size_t len) {
+     // directly here so they show up alongside the rest in a CMD_GET_CUSTOM_VARS listing.
+     // wifi_pwd is intentionally omitted from readback.
+     if (dp - (char *)&out_frame[1] < 140) {
+-      *dp++ = ',';
++      // Only a separator if something (sensor settings) was already written above --
++      // an unconditional leading comma here produced an empty first field ("<byte>,wifi_ssid:...")
++      // whenever there were zero sensor settings, which crashed meshcore-cli's parser
++      // (confirmed on real hardware, 29/08/2026: IndexError on psplit[1], raw frame decoded
++      // to "\x15,wifi_ssid:,wifi_enabled:0" -- the leading comma had nothing before it).
++      if (dp != (char *)&out_frame[1]) {
++        *dp++ = ',';
++      }
+       strcpy(dp, "wifi_ssid"); dp = strchr(dp, 0);
+       *dp++ = ':';
+       strcpy(dp, _prefs.wifi_ssid); dp = strchr(dp, 0);

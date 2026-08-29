@@ -1,0 +1,112 @@
+From 8482ccbf39e2eba128f09ba929ab1b036b4f8770 Mon Sep 17 00:00:00 2001
+From: GNB Build <palimpseste@quidam.eu>
+Date: Fri, 26 Jun 2026 21:52:47 +0200
+Subject: [PATCH 1/7] Fix Windows CreateProcess/cmd.exe command line limit for
+ ESP32-S3 builds
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Add fix_windows_spawn.py to esp32_base.extra_scripts — bypasses cmd.exe
+8191-char limit via subprocess.Popen(list, shell=False). Combined with
+C:\pio junction (PLATFORMIO_CORE_DIR=C:\pio) keeps total command under
+32767-char Windows limit. Required for all ESP32-S3 builds on Windows.
+
+Ported from agessaman/scripts/fix_windows_spawn.py.
+---
+ platformio.ini               |  4 ++-
+ scripts/fix_windows_spawn.py | 70 ++++++++++++++++++++++++++++++++++++
+ 2 files changed, 73 insertions(+), 1 deletion(-)
+ create mode 100644 scripts/fix_windows_spawn.py
+
+diff --git a/platformio.ini b/platformio.ini
+index e78124a4..523b8a72 100644
+--- a/platformio.ini
++++ b/platformio.ini
+@@ -59,7 +59,9 @@ build_src_filter =
+ extends = arduino_base
+ platform = platformio/espressif32@6.11.0
+ monitor_filters = esp32_exception_decoder
+-extra_scripts = merge-bin.py
++extra_scripts =
++  merge-bin.py
++  scripts/fix_windows_spawn.py
+ build_flags = ${arduino_base.build_flags}
+   -D ESP32_PLATFORM
+ ;  -D ESP32_CPU_FREQ=80          ; change it to your need
+diff --git a/scripts/fix_windows_spawn.py b/scripts/fix_windows_spawn.py
+new file mode 100644
+index 00000000..ed10ef20
+--- /dev/null
++++ b/scripts/fix_windows_spawn.py
+@@ -0,0 +1,70 @@
++"""
++Fix Windows command-line limits for SCons/PlatformIO ESP32-S3 builds.
++
++Problem: SCons wraps compile commands in cmd.exe /C "..." (8191-char limit).
++Even without cmd.exe, g++ spawns cc1plus via CreateProcess with ~32k chars
++which is close to the 32767-char absolute limit, causing CreateProcess to fail
++with ERROR_FILE_NOT_FOUND (mapped by GCC to "No such file or directory").
++
++Fix: bypass cmd.exe entirely by using subprocess.Popen(list, shell=False).
++subprocess searches PATH for the executable (unlike exec_spawn which uses
++os.spawnve and doesn't search PATH). Combined with shorter include paths via
++PLATFORMIO_CORE_DIR junction, total command stays under 32767 chars.
++"""
++Import("env")  # noqa: F821
++import sys
++import os
++import subprocess
++
++if sys.platform == "win32":
++    def _strip_shell_quotes(arg):
++        """Strip outer cmd.exe-style double quotes (added by SCons escape for shell)."""
++        if len(arg) >= 2 and arg[0] == '"' and arg[-1] == '"':
++            return arg[1:-1]
++        return arg
++
++    def _subprocess_spawn(sh, escape, cmd, args, env_dict):
++        """
++        Spawn via subprocess.Popen(list, shell=False):
++        - Bypasses cmd.exe (no 8191-char limit)
++        - Searches PATH for executable (unlike exec_spawn/os.spawnve)
++        - Strips cmd.exe-style quoting from args (SCons adds quotes for shell;
++          subprocess passes them literally, causing "No such file" errors)
++        """
++        clean_args = [_strip_shell_quotes(a) for a in args]
++        try:
++            p = subprocess.Popen(
++                clean_args,
++                env=env_dict,
++                shell=False,
++                stdout=subprocess.PIPE,
++                stderr=subprocess.PIPE,
++            )
++            out, err = p.communicate()
++            if out:
++                sys.stdout.buffer.write(out)
++                sys.stdout.flush()
++            if err:
++                sys.stderr.buffer.write(err)
++                sys.stderr.flush()
++            return p.returncode
++        except FileNotFoundError:
++            # cmd.exe built-in commands (del, copy, etc.) can't be spawned directly
++            _builtins = {'del', 'copy', 'move', 'md', 'mkdir', 'rd', 'rmdir',
++                         'echo', 'type', 'erase', 'ren', 'rename'}
++            exe_name = os.path.splitext(os.path.basename(clean_args[0]))[0].lower()
++            if exe_name in _builtins:
++                try:
++                    subprocess.Popen(['cmd', '/c'] + clean_args, env=env_dict, shell=False,
++                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).wait()
++                except Exception:
++                    pass
++                return 0  # don't fail the build for cleanup commands
++            sys.stderr.write(f"[fix_windows_spawn] executable not found: {clean_args[0]}\n")
++            return 1
++        except Exception as exc:
++            sys.stderr.write(f"[fix_windows_spawn] spawn error: {exc}\n")
++            return 1
++
++    env["SPAWN"] = _subprocess_spawn
++    print("[fix_windows_spawn] subprocess spawn installed (cmd.exe bypassed, PATH searched)")

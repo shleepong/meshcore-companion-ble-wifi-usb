@@ -1,0 +1,46 @@
+From 103ec6d52c01c90fc83d9d7dd72c9f6edd3dbed6 Mon Sep 17 00:00:00 2001
+From: GNB Build <palimpseste@quidam.eu>
+Date: Sat, 29 Aug 2026 19:24:57 +0200
+Subject: [PATCH 5/7] companion: enable USB companion protocol alongside
+ BLE+WiFi
+
+ENABLE_USB_INTERFACE=1 added to both DUAL_BLE_WIFI envs (V4.3, Tracker V2).
+Already fully wired in main.cpp (usb_serial_interface.begin(Serial) +
+interface_manager registration), just needed the build flag. Shares the
+Serial/115200 stream with debug logging (WIFI_DEBUG_PRINTLN etc.) -- not
+a separate USB CDC channel, worth keeping in mind if debug output ever
+interferes with companion protocol framing over USB.
+
+Lets meshcore-cli -s <COMxx> reach the companion protocol over USB, not
+just BLE (-d <name>) or TCP (-t <ip>) once WiFi is up.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+---
+ variants/heltec_tracker_v2/platformio.ini | 1 +
+ variants/heltec_v4/platformio.ini         | 1 +
+ 2 files changed, 2 insertions(+)
+
+diff --git a/variants/heltec_tracker_v2/platformio.ini b/variants/heltec_tracker_v2/platformio.ini
+index ab54e5bf..b56111db 100644
+--- a/variants/heltec_tracker_v2/platformio.ini
++++ b/variants/heltec_tracker_v2/platformio.ini
+@@ -217,6 +217,7 @@ build_flags =
+   -D DISPLAY_CLASS=ST7735Display
+   -D DUAL_BLE_WIFI=1
+   -D BLE_PIN_CODE=123456   ; dynamic, random PIN
++  -D ENABLE_USB_INTERFACE=1   ; companion protocol also over USB serial (shares Serial/115200 with debug logs)
+   -D AUTO_SHUTDOWN_MILLIVOLTS=3400
+   -D BLE_DEBUG_LOGGING=1
+   -D WIFI_DEBUG_LOGGING=1
+diff --git a/variants/heltec_v4/platformio.ini b/variants/heltec_v4/platformio.ini
+index ac1b4dc8..982bf8df 100644
+--- a/variants/heltec_v4/platformio.ini
++++ b/variants/heltec_v4/platformio.ini
+@@ -263,6 +263,7 @@ build_flags =
+   -D DISPLAY_CLASS=SSD1306Display
+   -D DUAL_BLE_WIFI=1
+   -D BLE_PIN_CODE=123456   ; dynamic, random PIN
++  -D ENABLE_USB_INTERFACE=1   ; companion protocol also over USB serial (shares Serial/115200 with debug logs)
+   -D AUTO_SHUTDOWN_MILLIVOLTS=3400
+   -D BLE_DEBUG_LOGGING=1
+   -D WIFI_DEBUG_LOGGING=1

@@ -1,0 +1,231 @@
+From cc38855def58393a72cc7dfaa340e550efd9642a Mon Sep 17 00:00:00 2001
+From: GNB Build <palimpseste@quidam.eu>
+Date: Sat, 29 Aug 2026 16:54:49 +0200
+Subject: [PATCH 3/7] companion: WIFI home screen page with live radio on/off
+ toggle
+
+New DUAL_BLE_WIFI-only page (ui-new/UITask.cpp, alongside GPS/BLUETOOTH/
+ADVERT), long-press toggles WiFi on/off immediately, no reboot -- same
+pattern as the existing BLUETOOTH page (enableBluetooth/disableBluetooth
+on MultiSerialInterface), but going one level deeper: SerialWifiInterface
+enable()/disable() only gate the TCP servers own frame routing, not the
+WiFi radio itself (unlike SerialBLEInterface, which really does start/
+stop advertising in enable()/disable()). So UITask::toggleWiFi() drives
+the radio directly (WiFi.begin()/disconnect()/mode()) plus interface_manager
+add/removeInterface(), rather than reusing a shallow enable()/disable() call.
+
+wifi_interface.begin() (the TCP server itself) now starts unconditionally,
+exactly once, in main.cpp setup() regardless of wifi_enabled -- previously
+only called when wifi_enabled was already set at boot. This lets the new
+page turn WiFi on for the first time without ever re-calling begin() on
+the server.
+
+Page shows on/off state and, once connected, the IP address. Off state
+also surfaces whether a SSID is configured yet, so a first-time user
+knows to set wifi_ssid before expecting the toggle to do anything.
+
+Compiled and verified on all 4 relevant envs (dual V4.3, dual Tracker V2,
+plain BLE V4, plain WiFi V4) -- no regression on the untouched envs.
+Not yet tested on real hardware.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+---
+ examples/companion_radio/main.cpp          | 28 ++++---
+ examples/companion_radio/ui-new/UITask.cpp | 87 +++++++++++++++++++++-
+ examples/companion_radio/ui-new/UITask.h   |  4 +
+ 3 files changed, 107 insertions(+), 12 deletions(-)
+
+diff --git a/examples/companion_radio/main.cpp b/examples/companion_radio/main.cpp
+index 446d6a27..2d67133c 100644
+--- a/examples/companion_radio/main.cpp
++++ b/examples/companion_radio/main.cpp
+@@ -207,29 +207,35 @@ void setup() {
+   // the binary. Registered into interface_manager alongside Bluetooth above:
+   // both run simultaneously, no reboot switch, no "which transport is the
+   // board on" guesswork -- the app can connect over either at any time.
++  //
++  // wifi_interface.begin() (the TCP server) starts unconditionally here,
++  // exactly once, regardless of wifi_enabled -- this lets the WIFI home
++  // page (UITask::toggleWiFi(), ui-new/UITask.cpp) turn the radio on/off
++  // live afterwards without ever re-calling begin() on the server itself.
++  WiFi.setAutoReconnect(true);
++  WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info){
++      if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
++          WIFI_DEBUG_PRINTLN("WiFi disconnected. Flagging for reconnect...");
++          wifi_needs_reconnect = true;
++      } else if (event == ARDUINO_EVENT_WIFI_STA_GOT_IP) {
++          WIFI_DEBUG_PRINTLN("WiFi connected successfully!");
++          wifi_needs_reconnect = false;
++      }
++  });
++  wifi_interface.begin(TCP_PORT);
+   {
+     NodePrefs* np = the_mesh.getNodePrefs();
+     if (np->wifi_enabled && np->wifi_ssid[0] != '\0') {
+       WIFI_DEBUG_PRINTLN("wifi_enabled is set, attempting to join '%s'...", np->wifi_ssid);
+       board.setInhibitSleep(true);   // prevent sleep while WiFi is active
+-      WiFi.setAutoReconnect(true);
+-      WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info){
+-          if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
+-              WIFI_DEBUG_PRINTLN("WiFi disconnected. Flagging for reconnect...");
+-              wifi_needs_reconnect = true;
+-          } else if (event == ARDUINO_EVENT_WIFI_STA_GOT_IP) {
+-              WIFI_DEBUG_PRINTLN("WiFi connected successfully!");
+-              wifi_needs_reconnect = false;
+-          }
+-      });
+       WiFi.mode(WIFI_STA);
+       WiFi.begin(np->wifi_ssid, np->wifi_password);
+-      wifi_interface.begin(TCP_PORT);
+       interface_manager.addInterface(InterfaceType::WiFi, &wifi_interface);
+     }
+     // wifi_enabled=0, or no SSID configured yet: Bluetooth (added above) is
+     // always available to reach the device and set wifi_ssid/wifi_pwd/
+     // wifi_enabled for next boot -- see CMD_SET_CUSTOM_VAR in MyMesh.cpp.
++    // Can also be turned on live from the WIFI home page, see UITask::toggleWiFi().
+   }
+ #elif defined(WIFI_SSID)
+   board.setInhibitSleep(true);   // prevent sleep when WiFi is active
+diff --git a/examples/companion_radio/ui-new/UITask.cpp b/examples/companion_radio/ui-new/UITask.cpp
+index 051f3b31..f143e8be 100644
+--- a/examples/companion_radio/ui-new/UITask.cpp
++++ b/examples/companion_radio/ui-new/UITask.cpp
+@@ -2,9 +2,17 @@
+ #include <helpers/TxtDataHelpers.h>
+ #include "../MyMesh.h"
+ #include "target.h"
+-#ifdef WIFI_SSID
++#if defined(WIFI_SSID) || defined(OBSERVER_WIFI_COMPANION) || defined(DUAL_BLE_WIFI)
+   #include <WiFi.h>
+ #endif
++#ifdef DUAL_BLE_WIFI
++  #include <helpers/esp32/SerialWifiInterface.h>
++  extern MultiSerialInterface interface_manager;
++  extern SerialWifiInterface wifi_interface;
++  #ifndef TCP_PORT
++    #define TCP_PORT 5000
++  #endif
++#endif
+ 
+ #ifndef AUTO_OFF_MILLIS
+   #define AUTO_OFF_MILLIS     15000   // 15 seconds
+@@ -91,6 +99,9 @@ class HomeScreen : public UIScreen {
+     RADIO,
+     BLUETOOTH,
+     ADVERT,
++#ifdef DUAL_BLE_WIFI
++    WIFI,
++#endif
+ #if ENV_INCLUDE_GPS == 1
+     GPS,
+ #endif
+@@ -299,6 +310,34 @@ public:
+       display.drawXbm((display.width() - 32) / 2, 18, advert_icon, 32, 32);
+       display.setColor(UIColor::secondary_txt);
+       display.drawTextCentered(display.width() / 2, 64 - 11, "advert: " PRESS_LABEL);
++#ifdef DUAL_BLE_WIFI
++    } else if (_page == HomePage::WIFI) {
++      char buf[40];
++      int y = 20;
++      bool wifi_on = _task->isWiFiEnabled();
++      display.setTextSize(2);
++      display.setColor(wifi_on ? UIColor::corp_blue : UIColor::secondary_txt);
++      display.drawTextCentered(display.width() / 2, y, wifi_on ? "WiFi: on" : "WiFi: off");
++      y += 20;
++      display.setTextSize(1);
++      display.setColor(UIColor::primary_txt);
++      if (wifi_on) {
++        if (WiFi.status() == WL_CONNECTED) {
++          IPAddress ip = WiFi.localIP();
++          snprintf(buf, sizeof(buf), "IP: %d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
++        } else if (_node_prefs->wifi_ssid[0] == 0) {
++          strcpy(buf, "no SSID configured");
++        } else {
++          strcpy(buf, "connecting...");
++        }
++      } else {
++        strcpy(buf, _node_prefs->wifi_ssid[0] ? _node_prefs->wifi_ssid : "no SSID configured");
++      }
++      display.drawTextCentered(display.width() / 2, y, buf);
++      y += 16;
++      display.setColor(UIColor::secondary_txt);
++      display.drawTextCentered(display.width() / 2, y, "toggle: " PRESS_LABEL);
++#endif
+ #if ENV_INCLUDE_GPS == 1
+     } else if (_page == HomePage::GPS) {
+       LocationProvider* nmea = sensors.getLocationProvider();
+@@ -465,6 +504,12 @@ public:
+       }
+       return true;
+     }
++#ifdef DUAL_BLE_WIFI
++    if (c == KEY_ENTER && _page == HomePage::WIFI) {
++      _task->toggleWiFi();
++      return true;
++    }
++#endif
+ #if ENV_INCLUDE_GPS == 1
+     if (c == KEY_ENTER && _page == HomePage::GPS) {
+       _task->toggleGPS();
+@@ -952,6 +997,46 @@ void UITask::toggleGPS() {
+   }
+ }
+ 
++#ifdef DUAL_BLE_WIFI
++bool UITask::isWiFiEnabled() {
++  return WiFi.getMode() != WIFI_OFF;
++}
++
++// Live radio on/off, no reboot needed -- unlike enable()/disable() on
++// SerialBLEInterface, SerialWifiInterface's own enable()/disable() only
++// gate the TCP server's frame routing, not the WiFi radio itself (see
++// helpers/esp32/SerialWifiInterface.cpp). So the actual join/leave and
++// interface_manager registration both happen here, not through a shallow
++// enable()/disable() call. wifi_interface.begin() (the TCP server) is
++// started exactly once, unconditionally, in main.cpp's setup() -- never
++// re-called from here.
++void UITask::toggleWiFi() {
++  if (WiFi.getMode() != WIFI_OFF) {
++    // currently on (connected or still trying) -- turn off
++    WiFi.disconnect(true);
++    WiFi.mode(WIFI_OFF);
++    interface_manager.removeInterface(&wifi_interface);
++    _node_prefs->wifi_enabled = 0;
++    notify(UIEventType::ack);
++    the_mesh.savePrefs();
++    showAlert("WiFi: Disabled", 800);
++  } else {
++    if (_node_prefs->wifi_ssid[0] == 0) {
++      showAlert("Set wifi_ssid first", 1200);
++      return;
++    }
++    WiFi.mode(WIFI_STA);
++    WiFi.begin(_node_prefs->wifi_ssid, _node_prefs->wifi_password);
++    interface_manager.addInterface(InterfaceType::WiFi, &wifi_interface);
++    _node_prefs->wifi_enabled = 1;
++    notify(UIEventType::ack);
++    the_mesh.savePrefs();
++    showAlert("WiFi: Enabling...", 800);
++  }
++  _next_refresh = 0;
++}
++#endif
++
+ void UITask::toggleBuzzer() {
+     // Toggle buzzer quiet mode
+   #ifdef PIN_BUZZER
+diff --git a/examples/companion_radio/ui-new/UITask.h b/examples/companion_radio/ui-new/UITask.h
+index 52d3ffa1..d351d188 100644
+--- a/examples/companion_radio/ui-new/UITask.h
++++ b/examples/companion_radio/ui-new/UITask.h
+@@ -89,6 +89,10 @@ public:
+   void toggleBuzzer();
+   bool getGPSState();
+   void toggleGPS();
++#ifdef DUAL_BLE_WIFI
++  bool isWiFiEnabled();
++  void toggleWiFi();
++#endif
+ 
+ 
+   // from AbstractUITask

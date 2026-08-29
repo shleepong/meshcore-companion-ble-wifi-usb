@@ -1,0 +1,146 @@
+From 8ea16c31ad04a6bf75b39529333626c7cb180155 Mon Sep 17 00:00:00 2001
+From: GNB Build <palimpseste@quidam.eu>
+Date: Sat, 29 Aug 2026 18:17:28 +0200
+Subject: [PATCH 4/7] companion: fix DUAL_BLE_WIFI boot crash and WiFi page
+ state tracking
+
+Two real bugs found on physical V4.3 hardware today, both now fixed and
+verified on real hardware:
+
+1. Boot crash-loop ("assert failed: tcpip_send_msg_wait_sem ... Invalid
+   mbox", RTC_SW_SYS_RST repeating forever, confirmed via a passive
+   serial capture with DTR/RTS disabled -- any tool that opens the port
+   normally re-triggers a reset and masks this). Root cause: making
+   wifi_interface.begin() (WiFiServer::begin(), a prior commit today)
+   unconditional meant it could run, along with WiFi.onEvent()/
+   setAutoReconnect(), before WiFi.mode() had ever been called once --
+   the call that actually brings up the underlying netif/lwIP stack.
+   Fix: call WiFi.mode(WIFI_STA) unconditionally, first, before any of
+   that. Harmless on its own, does not start a connection by itself.
+
+2. WIFI page always showing "on" regardless of actual state. Caused by
+   fix #1 side effect: isWiFiEnabled() checked WiFi.getMode() !=
+   WIFI_OFF, which is now always true post-boot since mode is set
+   unconditionally. Replaced with an explicit wifi_active bool (new
+   global in main.cpp), set at boot only when actually attempting a
+   connection, and by UITask::toggleWiFi() -- the real source of truth
+   instead of an unreliable proxy.
+
+Separately (packaging issue, not a code bug): the esptool merge-bin
+commands used today assumed --flash-size 8MB, never checked against the
+real chip -- this specific V4.3 unit has 16MB (confirmed via esptool
+flash_id), causing an earlier, different boot failure (immediate
+RTC_SW_SYS_RST loop before any app code ran at all, blank screen).
+boards/heltec_v4.json already correctly declares flash_size 16MB, so
+only the manual merge step was wrong, not the PlatformIO build itself.
+
+All of this found and fixed today by flashing a real V4.3, with a lot of
+back and forth on what the screen was actually showing at each step.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+---
+ examples/companion_radio/main.cpp          | 20 +++++++++++++++++++-
+ examples/companion_radio/ui-new/UITask.cpp | 17 ++++++++++++++---
+ 2 files changed, 33 insertions(+), 4 deletions(-)
+
+diff --git a/examples/companion_radio/main.cpp b/examples/companion_radio/main.cpp
+index 2d67133c..757edb14 100644
+--- a/examples/companion_radio/main.cpp
++++ b/examples/companion_radio/main.cpp
+@@ -115,6 +115,15 @@ void halt() {
+   bool wifi_needs_reconnect = false;
+   unsigned long last_wifi_reconnect_attempt = 0;
+ #endif
++#ifdef DUAL_BLE_WIFI
++  // Explicit state, read by UITask::isWiFiEnabled() -- WiFi.getMode() is NOT
++  // a usable proxy here: WiFi.mode(WIFI_STA) is now called unconditionally
++  // at boot (needed to bring up the netif/lwIP stack before wifi_interface.begin(),
++  // see the DUAL_BLE_WIFI setup() block), so WiFi.getMode() is WIFI_STA even
++  // when nothing is configured/connected. This flag is the real source of
++  // truth, set here at boot and by UITask::toggleWiFi().
++  bool wifi_active = false;
++#endif
+ 
+ void setup() {
+   Serial.begin(115200);
+@@ -212,6 +221,15 @@ void setup() {
+   // exactly once, regardless of wifi_enabled -- this lets the WIFI home
+   // page (UITask::toggleWiFi(), ui-new/UITask.cpp) turn the radio on/off
+   // live afterwards without ever re-calling begin() on the server itself.
++  //
++  // WiFi.mode() must run before WiFiServer::begin() (wifi_interface.begin()
++  // below) or before WiFi.onEvent()/setAutoReconnect() -- any of those,
++  // called before the underlying netif/lwIP stack exists, crash with
++  // "assert failed: tcpip_send_msg_wait_sem ... (Invalid mbox)" (confirmed
++  // on real hardware, boot-loops immediately, 29/08/2026). WiFi.mode(WIFI_STA)
++  // is what brings that stack up; calling it here, unconditionally, is
++  // itself harmless (doesn't start a connection attempt on its own).
++  WiFi.mode(WIFI_STA);
+   WiFi.setAutoReconnect(true);
+   WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info){
+       if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
+@@ -228,9 +246,9 @@ void setup() {
+     if (np->wifi_enabled && np->wifi_ssid[0] != '\0') {
+       WIFI_DEBUG_PRINTLN("wifi_enabled is set, attempting to join '%s'...", np->wifi_ssid);
+       board.setInhibitSleep(true);   // prevent sleep while WiFi is active
+-      WiFi.mode(WIFI_STA);
+       WiFi.begin(np->wifi_ssid, np->wifi_password);
+       interface_manager.addInterface(InterfaceType::WiFi, &wifi_interface);
++      wifi_active = true;
+     }
+     // wifi_enabled=0, or no SSID configured yet: Bluetooth (added above) is
+     // always available to reach the device and set wifi_ssid/wifi_pwd/
+diff --git a/examples/companion_radio/ui-new/UITask.cpp b/examples/companion_radio/ui-new/UITask.cpp
+index f143e8be..31119a16 100644
+--- a/examples/companion_radio/ui-new/UITask.cpp
++++ b/examples/companion_radio/ui-new/UITask.cpp
+@@ -9,6 +9,7 @@
+   #include <helpers/esp32/SerialWifiInterface.h>
+   extern MultiSerialInterface interface_manager;
+   extern SerialWifiInterface wifi_interface;
++  extern bool wifi_active;
+   #ifndef TCP_PORT
+     #define TCP_PORT 5000
+   #endif
+@@ -999,7 +1000,12 @@ void UITask::toggleGPS() {
+ 
+ #ifdef DUAL_BLE_WIFI
+ bool UITask::isWiFiEnabled() {
+-  return WiFi.getMode() != WIFI_OFF;
++  // NOT WiFi.getMode() != WIFI_OFF -- WiFi.mode(WIFI_STA) is now called
++  // unconditionally at boot (main.cpp setup(), needed to bring up the
++  // netif/lwIP stack before wifi_interface.begin()), so mode alone can't
++  // tell "configured/connecting" apart from "never asked for". wifi_active
++  // is the real, explicitly-tracked state (see main.cpp).
++  return wifi_active;
+ }
+ 
+ // Live radio on/off, no reboot needed -- unlike enable()/disable() on
+@@ -1009,13 +1015,17 @@ bool UITask::isWiFiEnabled() {
+ // interface_manager registration both happen here, not through a shallow
+ // enable()/disable() call. wifi_interface.begin() (the TCP server) is
+ // started exactly once, unconditionally, in main.cpp's setup() -- never
+-// re-called from here.
++// re-called from here. WiFi.mode() itself is also already brought up at
++// boot unconditionally (see main.cpp) -- toggling it here afterwards
++// (STA<->OFF) is a normal, supported operation, not the same situation
++// that crashed before any mode had ever been set.
+ void UITask::toggleWiFi() {
+-  if (WiFi.getMode() != WIFI_OFF) {
++  if (wifi_active) {
+     // currently on (connected or still trying) -- turn off
+     WiFi.disconnect(true);
+     WiFi.mode(WIFI_OFF);
+     interface_manager.removeInterface(&wifi_interface);
++    wifi_active = false;
+     _node_prefs->wifi_enabled = 0;
+     notify(UIEventType::ack);
+     the_mesh.savePrefs();
+@@ -1028,6 +1038,7 @@ void UITask::toggleWiFi() {
+     WiFi.mode(WIFI_STA);
+     WiFi.begin(_node_prefs->wifi_ssid, _node_prefs->wifi_password);
+     interface_manager.addInterface(InterfaceType::WiFi, &wifi_interface);
++    wifi_active = true;
+     _node_prefs->wifi_enabled = 1;
+     notify(UIEventType::ack);
+     the_mesh.savePrefs();

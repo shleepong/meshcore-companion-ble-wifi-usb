@@ -1,0 +1,808 @@
+<title>WiFi Uplink</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders:wght@500;600;700&family=Public+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #F3F5F7;
+    --surface: #FFFFFF;
+    --surface-2: #E9EDF1;
+    --border: #D3DAE1;
+    --text: #16212B;
+    --text-muted: #5B6B78;
+    --accent: #A8660A;
+    --accent-ink: #FFFFFF;
+    --accent-soft: #F3E4CC;
+    --secondary: #1E7D78;
+    --secondary-soft: #DCEFED;
+    --success: #1F7A45;
+    --success-soft: #DEF3E4;
+    --danger: #B33A2E;
+    --danger-soft: #FBE4E0;
+    --console-bg: #101820;
+    --console-fg: #CBD8E1;
+    --console-accent: #E3A23C;
+    --console-muted: #5B7183;
+    --font-display: "Big Shoulders", "Arial Narrow", sans-serif;
+    --font-body: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-mono: "JetBrains Mono", "Consolas", "SFMono-Regular", monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0E161D;
+      --surface: #16212B;
+      --surface-2: #1C2932;
+      --border: #2A3944;
+      --text: #E7EDF2;
+      --text-muted: #93A5B2;
+      --accent: #E3A23C;
+      --accent-ink: #1B1206;
+      --accent-soft: #3A2C14;
+      --secondary: #4FB6AC;
+      --secondary-soft: #16302E;
+      --success: #4FBE7C;
+      --success-soft: #123322;
+      --danger: #E87A6B;
+      --danger-soft: #3A1712;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0E161D;
+    --surface: #16212B;
+    --surface-2: #1C2932;
+    --border: #2A3944;
+    --text: #E7EDF2;
+    --text-muted: #93A5B2;
+    --accent: #E3A23C;
+    --accent-ink: #1B1206;
+    --accent-soft: #3A2C14;
+    --secondary: #4FB6AC;
+    --secondary-soft: #16302E;
+    --success: #4FBE7C;
+    --success-soft: #123322;
+    --danger: #E87A6B;
+    --danger-soft: #3A1712;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 28px 20px 60px;
+  }
+
+  /* ---------- header ---------- */
+  .masthead {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding-bottom: 18px;
+    border-bottom: 2px solid var(--border);
+    margin-bottom: 24px;
+  }
+  .masthead h1 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: clamp(2rem, 5vw, 2.75rem);
+    letter-spacing: 0.01em;
+    margin: 0;
+    text-wrap: balance;
+    line-height: 0.95;
+  }
+  .masthead .tagline {
+    font-size: 0.92rem;
+    color: var(--text-muted);
+    margin-top: 6px;
+    max-width: 46ch;
+  }
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 14px;
+    border-radius: 999px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+  .status-pill .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    flex: none;
+  }
+  .status-pill[data-state="connected"] { background: var(--success-soft); color: var(--success); border-color: transparent; }
+  .status-pill[data-state="connected"] .dot { background: var(--success); }
+  .status-pill[data-state="busy"] { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+  .status-pill[data-state="busy"] .dot { background: var(--accent); animation: pulse 1.1s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce) { .status-pill[data-state="busy"] .dot { animation: none; } }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+  /* ---------- compat banner ---------- */
+  .banner {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    padding: 13px 16px;
+    border-radius: 10px;
+    background: var(--secondary-soft);
+    border: 1px solid color-mix(in srgb, var(--secondary) 35%, transparent);
+    color: var(--text);
+    font-size: 0.88rem;
+    margin-bottom: 22px;
+  }
+  .banner strong { color: var(--secondary); }
+  .banner.warn {
+    background: var(--danger-soft);
+    border-color: color-mix(in srgb, var(--danger) 35%, transparent);
+  }
+  .banner.warn strong { color: var(--danger); }
+  .banner .glyph { font-family: var(--font-mono); font-weight: 500; flex: none; opacity: 0.75; }
+
+  /* ---------- grid ---------- */
+  .grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+    gap: 20px;
+    align-items: start;
+  }
+  @media (max-width: 860px) {
+    .grid { grid-template-columns: 1fr; }
+  }
+  .stack { display: flex; flex-direction: column; gap: 20px; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 20px;
+  }
+  .card h2 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 1.15rem;
+    letter-spacing: 0.01em;
+    margin: 0 0 4px;
+  }
+  .card .sub {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    margin: 0 0 16px;
+  }
+
+  /* ---------- connection buttons ---------- */
+  .transport-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 6px;
+  }
+  button {
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 0.88rem;
+    border-radius: 9px;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    color: var(--text);
+    padding: 11px 14px;
+    cursor: pointer;
+    transition: filter 0.12s ease, transform 0.05s ease;
+  }
+  @media (prefers-reduced-motion: reduce) { button { transition: none; } }
+  button:hover:not(:disabled) { filter: brightness(0.97); }
+  :root:not([data-theme="light"]) button:hover:not(:disabled) { filter: brightness(1.15); }
+  button:active:not(:disabled) { transform: translateY(1px); }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  button.ghost { background: transparent; }
+  button.full { width: 100%; }
+  button.small { padding: 7px 12px; font-size: 0.78rem; }
+
+  .unsupported-note {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    margin-top: 8px;
+  }
+
+  .kv {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 6px 14px;
+    font-size: 0.85rem;
+    margin-top: 14px;
+  }
+  .kv dt { color: var(--text-muted); }
+  .kv dd { margin: 0; font-family: var(--font-mono); font-size: 0.82rem; }
+  .kv-empty { color: var(--text-muted); font-size: 0.82rem; font-style: italic; }
+
+  /* ---------- form ---------- */
+  .field { margin-bottom: 16px; }
+  .field label {
+    display: block;
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+  }
+  .field input[type="text"],
+  .field input[type="password"] {
+    width: 100%;
+    font-family: var(--font-mono);
+    font-size: 0.92rem;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    color: var(--text);
+  }
+  .field input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .field input:disabled { opacity: 0.55; }
+  .pwd-row { position: relative; }
+  .pwd-row input { padding-right: 68px; }
+  .pwd-row button {
+    position: absolute;
+    right: 5px;
+    top: 5px;
+    bottom: 5px;
+    padding: 0 10px;
+  }
+  .hint { font-size: 0.75rem; color: var(--text-muted); margin-top: 5px; }
+  .charcount { font-family: var(--font-mono); }
+
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 11px 12px;
+    border-radius: 8px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    margin-bottom: 18px;
+  }
+  .toggle-row input { width: 17px; height: 17px; accent-color: var(--accent); }
+  .toggle-row label { font-size: 0.86rem; font-weight: 500; cursor: pointer; }
+
+  .form-actions { display: flex; gap: 10px; }
+
+  /* ---------- console ---------- */
+  .console-card { padding: 0; overflow: hidden; }
+  .console-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 20px 0;
+  }
+  .console-head h2 { margin-bottom: 0; }
+  .console {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    background: var(--console-bg);
+    color: var(--console-fg);
+    padding: 14px 20px;
+    margin-top: 14px;
+    height: 220px;
+    overflow-y: auto;
+    overflow-x: auto;
+  }
+  .console .row { white-space: pre-wrap; word-break: break-word; padding: 1px 0; }
+  .console .t { color: var(--console-muted); }
+  .console .out { color: var(--console-accent); }
+  .console .in { color: #7FD6C6; }
+  .console .ok { color: #7FD6C6; }
+  .console .err { color: #E87A6B; }
+  .console .info { color: var(--console-fg); }
+  .console::-webkit-scrollbar { width: 9px; height: 9px; }
+  .console::-webkit-scrollbar-thumb { background: #2A3944; border-radius: 6px; }
+
+  /* ---------- footer ---------- */
+  footer {
+    margin-top: 30px;
+    padding-top: 18px;
+    border-top: 1px solid var(--border);
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  footer a { color: var(--secondary); }
+  footer code { font-family: var(--font-mono); background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
+</style>
+
+<div class="wrap">
+
+  <div class="masthead">
+    <div>
+      <h1>WiFi Uplink</h1>
+      <p class="tagline">Configure le SSID, le mot de passe et l'activation WiFi d'un radio compagnon MeshCore, en Bluetooth ou en USB, directement depuis ce navigateur.</p>
+    </div>
+    <span class="status-pill" id="statusPill" data-state="idle"><span class="dot"></span><span id="statusText">Non connecte</span></span>
+  </div>
+
+  <div class="banner" id="compatBanner">
+    <span class="glyph">i</span>
+    <div><strong>Chrome ou Edge requis</strong>, sur Windows ou Android. Safari (iOS/Mac) ne supporte ni le Bluetooth ni le port serie depuis un navigateur : aucun outil web ne peut le faire, ce n'est pas specifique a cette page.</div>
+  </div>
+
+  <div class="banner warn">
+    <span class="glyph">!</span>
+    <div><strong>Firmware communautaire, pas officiel.</strong> Cette page ne parle qu'au build <code>DUAL_BLE_WIFI</code> (BLE + USB + WiFi simultanes) decrit dans le depot associe. Elle n'a aucun effet sur un firmware MeshCore standard. Solution de depannage en attendant qu'un firmware companion multi-transport soit propose officiellement en amont.</div>
+  </div>
+
+  <div class="grid">
+
+    <div class="stack">
+      <div class="card">
+        <h2>Connexion</h2>
+        <p class="sub">Choisis le transport, puis autorise l'appareil dans la fenetre du navigateur.</p>
+        <div class="transport-row">
+          <button class="primary" id="btnBle" type="button">Bluetooth</button>
+          <button class="primary" id="btnUsb" type="button">USB</button>
+        </div>
+        <button class="ghost full small" id="btnDisconnect" type="button" disabled>Deconnecter</button>
+        <p class="unsupported-note" id="unsupportedNote" hidden></p>
+
+        <dl class="kv" id="deviceInfo">
+          <dt colspan="2" class="kv-empty" style="grid-column: 1 / -1;">Aucun appareil connecte pour le moment.</dt>
+        </dl>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Reglages WiFi</h2>
+      <p class="sub">Le mot de passe n'est jamais relu depuis l'appareil : laisse le champ vide pour ne pas le changer.</p>
+
+      <div class="field">
+        <label for="fSsid">Nom du reseau (SSID)</label>
+        <input type="text" id="fSsid" maxlength="31" placeholder="Connecte-toi d'abord" disabled>
+        <p class="hint"><span class="charcount" id="ssidCount">0</span> / 31 caracteres</p>
+      </div>
+
+      <div class="field">
+        <label for="fPwd">Mot de passe</label>
+        <div class="pwd-row">
+          <input type="password" id="fPwd" maxlength="63" placeholder="Laisser vide pour ne pas changer" disabled>
+          <button class="small" id="btnShowPwd" type="button" disabled>Afficher</button>
+        </div>
+        <p class="hint"><span class="charcount" id="pwdCount">0</span> / 63 caracteres</p>
+      </div>
+
+      <div class="toggle-row">
+        <input type="checkbox" id="fEnabled" disabled>
+        <label for="fEnabled">Activer le WiFi (rejoint le reseau au demarrage, bascule aussi possible depuis l'ecran de l'appareil)</label>
+      </div>
+
+      <div class="form-actions">
+        <button class="ghost" id="btnRefresh" type="button" disabled>Lire les reglages actuels</button>
+        <button class="primary" id="btnSave" type="button" disabled>Enregistrer</button>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="card console-card" style="margin-top: 20px;">
+    <div class="console-head">
+      <h2>Journal</h2>
+      <button class="ghost small" id="btnClearLog" type="button">Effacer</button>
+    </div>
+    <div class="console" id="console" role="log" aria-live="polite"></div>
+  </div>
+
+  <footer>
+    <div>Protocole : trames binaires du companion radio MeshCore (<code>CMD_SET_CUSTOM_VAR</code> / <code>CMD_GET_CUSTOM_VARS</code>), service BLE UART Nordic, framing serie par en-tete <code>&lt;</code>/<code>&gt;</code> + longueur. Aucune donnee ne quitte ce navigateur : tout se passe en direct entre cette page et l'appareil.</div>
+    <div>Reference protocole : <a href="https://github.com/meshcore-dev/MeshCore/wiki/Companion-Radio-Protocol" target="_blank" rel="noopener">meshcore-dev/MeshCore wiki</a>.</div>
+  </footer>
+
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------------- protocol constants (read directly from firmware source) ----------------
+  var SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+  var CHAR_RX_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"; // app writes here
+  var CHAR_TX_UUID = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"; // app subscribes here (notify)
+
+  var CMD_DEVICE_QUERY = 22;
+  var CMD_GET_CUSTOM_VARS = 40;
+  var CMD_SET_CUSTOM_VAR = 41;
+
+  var RESP_CODE_OK = 0;
+  var RESP_CODE_ERR = 1;
+  var RESP_CODE_DEVICE_INFO = 13;
+  var RESP_CODE_CUSTOM_VARS = 21;
+
+  var ERR_NAMES = {
+    1: "commande non supportee",
+    2: "introuvable",
+    3: "table pleine",
+    4: "etat invalide",
+    5: "erreur de stockage",
+    6: "argument invalide"
+  };
+
+  // ---------------- state ----------------
+  var state = {
+    transport: null,    // 'ble' | 'usb'
+    bleDevice: null, bleRx: null,
+    usbPort: null, usbReader: null, usbWriter: null,
+    connected: false,
+    pending: null        // { resolve, reject, timer }
+  };
+
+  var usbParse = { mode: "idle", len: 0, buf: [] };
+
+  // ---------------- DOM ----------------
+  var $ = function (id) { return document.getElementById(id); };
+  var els = {
+    statusPill: $("statusPill"), statusText: $("statusText"),
+    btnBle: $("btnBle"), btnUsb: $("btnUsb"), btnDisconnect: $("btnDisconnect"),
+    unsupportedNote: $("unsupportedNote"),
+    deviceInfo: $("deviceInfo"),
+    fSsid: $("fSsid"), fPwd: $("fPwd"), fEnabled: $("fEnabled"),
+    btnShowPwd: $("btnShowPwd"), btnRefresh: $("btnRefresh"), btnSave: $("btnSave"),
+    ssidCount: $("ssidCount"), pwdCount: $("pwdCount"),
+    consoleEl: $("console"), btnClearLog: $("btnClearLog")
+  };
+
+  function log(msg, cls) {
+    var row = document.createElement("div");
+    row.className = "row";
+    var t = new Date();
+    var stamp = [t.getHours(), t.getMinutes(), t.getSeconds()].map(function (n) { return String(n).padStart(2, "0"); }).join(":");
+    row.innerHTML = '<span class="t">' + stamp + "</span>  " + '<span class="' + (cls || "info") + '">' + msg.replace(/&/g, "&amp;").replace(/</g, "&lt;") + "</span>";
+    els.consoleEl.appendChild(row);
+    els.consoleEl.scrollTop = els.consoleEl.scrollHeight;
+  }
+  els.btnClearLog.addEventListener("click", function () { els.consoleEl.innerHTML = ""; });
+
+  function setStatus(text, kindState) {
+    els.statusText.textContent = text;
+    els.statusPill.dataset.state = kindState || "idle";
+  }
+
+  function setFormEnabled(on) {
+    [els.fSsid, els.fPwd, els.fEnabled, els.btnShowPwd, els.btnRefresh, els.btnSave].forEach(function (el) { el.disabled = !on; });
+  }
+
+  els.fSsid.addEventListener("input", function () { els.ssidCount.textContent = els.fSsid.value.length; });
+  els.fPwd.addEventListener("input", function () { els.pwdCount.textContent = els.fPwd.value.length; });
+  els.btnShowPwd.addEventListener("click", function () {
+    var isPwd = els.fPwd.type === "password";
+    els.fPwd.type = isPwd ? "text" : "password";
+    els.btnShowPwd.textContent = isPwd ? "Masquer" : "Afficher";
+  });
+
+  // ---------------- frame encode/decode ----------------
+  function textFrame(cmd, text) {
+    var body = new TextEncoder().encode(text || "");
+    var out = new Uint8Array(1 + body.length);
+    out[0] = cmd;
+    out.set(body, 1);
+    return out;
+  }
+
+  function handleIncomingFrame(bytes) {
+    if (!bytes || bytes.length === 0) return;
+    var code = bytes[0];
+
+    if (state.pending) {
+      var p = state.pending;
+      state.pending = null;
+      clearTimeout(p.timer);
+      p.resolve(bytes);
+    }
+
+    if (code === RESP_CODE_DEVICE_INFO && bytes.length >= 82) {
+      var dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      var buildDate = asciiSlice(bytes, 8, 20);
+      var manufacturer = asciiSlice(bytes, 20, 60);
+      var version = asciiSlice(bytes, 60, 80);
+      renderDeviceInfo({ manufacturer: manufacturer, version: version, buildDate: buildDate });
+      log("Trame RESP_CODE_DEVICE_INFO recue (" + bytes.length + " octets)", "in");
+    } else if (code === RESP_CODE_CUSTOM_VARS) {
+      var text = new TextDecoder().decode(bytes.subarray(1));
+      log("RESP_CODE_CUSTOM_VARS : " + (text || "(vide)"), "in");
+      applyCustomVars(text);
+    } else if (code === RESP_CODE_OK) {
+      log("RESP_CODE_OK", "ok");
+    } else if (code === RESP_CODE_ERR) {
+      var errName = ERR_NAMES[bytes[1]] || ("code " + bytes[1]);
+      log("RESP_CODE_ERR : " + errName, "err");
+    } else {
+      log("Trame recue, code " + code + " (" + bytes.length + " octets)", "in");
+    }
+  }
+
+  function asciiSlice(bytes, start, end) {
+    var s = "";
+    for (var i = start; i < end && i < bytes.length; i++) {
+      if (bytes[i] === 0) break;
+      s += String.fromCharCode(bytes[i]);
+    }
+    return s;
+  }
+
+  function renderDeviceInfo(info) {
+    els.deviceInfo.innerHTML =
+      "<dt>Modele</dt><dd>" + escapeHtml(info.manufacturer || "?") + "</dd>" +
+      "<dt>Version</dt><dd>" + escapeHtml(info.version || "?") + "</dd>" +
+      "<dt>Compilation</dt><dd>" + escapeHtml(info.buildDate || "?") + "</dd>";
+  }
+  function escapeHtml(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
+
+  function applyCustomVars(text) {
+    var pairs = {};
+    text.split(",").forEach(function (chunk) {
+      var idx = chunk.indexOf(":");
+      if (idx < 0) return;
+      pairs[chunk.slice(0, idx)] = chunk.slice(idx + 1);
+    });
+    if ("wifi_ssid" in pairs) els.fSsid.value = pairs.wifi_ssid;
+    if ("wifi_enabled" in pairs) els.fEnabled.checked = pairs.wifi_enabled === "1";
+    els.ssidCount.textContent = els.fSsid.value.length;
+  }
+
+  // ---------------- request/response plumbing ----------------
+  function sendAndWait(bytes, timeoutMs) {
+    return new Promise(function (resolve, reject) {
+      if (state.pending) { reject(new Error("Une requete est deja en cours.")); return; }
+      state.pending = {
+        resolve: resolve,
+        reject: reject,
+        timer: setTimeout(function () {
+          state.pending = null;
+          reject(new Error("Pas de reponse (delai depasse)."));
+        }, timeoutMs || 5000)
+      };
+      transportSend(bytes).catch(function (e) {
+        if (state.pending) { clearTimeout(state.pending.timer); state.pending = null; }
+        reject(e);
+      });
+    });
+  }
+
+  function transportSend(bytes) {
+    if (state.transport === "ble") return sendBle(bytes);
+    if (state.transport === "usb") return sendUsb(bytes);
+    return Promise.reject(new Error("Non connecte."));
+  }
+
+  // ---------------- BLE transport ----------------
+  function connectBle() {
+    if (!navigator.bluetooth) { log("Web Bluetooth indisponible dans ce navigateur.", "err"); return; }
+    log("Demande d'appairage Bluetooth...", "out");
+    navigator.bluetooth.requestDevice({ filters: [{ services: [SERVICE_UUID] }], optionalServices: [SERVICE_UUID] })
+      .then(function (device) {
+        state.bleDevice = device;
+        device.addEventListener("gattserverdisconnected", onBleDisconnected);
+        log("Appareil choisi : " + (device.name || "(sans nom)") + ". Connexion GATT...", "out");
+        return device.gatt.connect();
+      })
+      .then(function (server) { return server.getPrimaryService(SERVICE_UUID); })
+      .then(function (service) {
+        return Promise.all([service.getCharacteristic(CHAR_RX_UUID), service.getCharacteristic(CHAR_TX_UUID)]);
+      })
+      .then(function (chars) {
+        state.bleRx = chars[0];
+        var tx = chars[1];
+        return tx.startNotifications().then(function () {
+          tx.addEventListener("characteristicvaluechanged", function (ev) {
+            handleIncomingFrame(new Uint8Array(ev.target.value.buffer));
+          });
+        });
+      })
+      .then(function () {
+        state.transport = "ble";
+        onConnected("Bluetooth");
+      })
+      .catch(function (e) {
+        log("Connexion Bluetooth annulee ou en echec : " + e.message, "err");
+      });
+  }
+
+  function sendBle(bytes) {
+    if (!state.bleRx) return Promise.reject(new Error("Caracteristique BLE indisponible."));
+    log("-> " + bytes.length + " octets (BLE)", "out");
+    if (state.bleRx.writeValueWithResponse) return state.bleRx.writeValueWithResponse(bytes);
+    return state.bleRx.writeValue(bytes);
+  }
+
+  function onBleDisconnected() {
+    if (state.transport === "ble") { log("Bluetooth deconnecte.", "err"); onDisconnected(); }
+  }
+
+  // ---------------- USB (Web Serial) transport ----------------
+  function connectUsb() {
+    if (!navigator.serial) { log("Web Serial indisponible dans ce navigateur.", "err"); return; }
+    log("Demande de port serie...", "out");
+    var port;
+    navigator.serial.requestPort()
+      .then(function (p) { port = p; return p.open({ baudRate: 115200 }); })
+      .then(function () {
+        state.usbPort = port;
+        state.usbWriter = port.writable.getWriter();
+        port.addEventListener("disconnect", function () {
+          if (state.transport === "usb") { log("USB debranche.", "err"); onDisconnected(); }
+        });
+        usbParse = { mode: "idle", len: 0, buf: [] };
+        readLoopUsb(port);
+        state.transport = "usb";
+        onConnected("USB");
+      })
+      .catch(function (e) {
+        log("Connexion USB annulee ou en echec : " + e.message, "err");
+      });
+  }
+
+  function readLoopUsb(port) {
+    var reader = port.readable.getReader();
+    state.usbReader = reader;
+    (function pump() {
+      reader.read().then(function (res) {
+        if (res.done) return;
+        for (var i = 0; i < res.value.length; i++) usbFeedByte(res.value[i]);
+        pump();
+      }).catch(function () { /* port closed */ });
+    })();
+  }
+
+  function usbFeedByte(c) {
+    switch (usbParse.mode) {
+      case "idle":
+        if (c === 0x3E /* '>' */) usbParse.mode = "hdr";
+        break;
+      case "hdr":
+        usbParse.len = c;
+        usbParse.mode = "len1";
+        break;
+      case "len1":
+        usbParse.len |= c << 8;
+        usbParse.buf = [];
+        usbParse.mode = usbParse.len > 0 ? "body" : "idle";
+        break;
+      case "body":
+        usbParse.buf.push(c);
+        if (usbParse.buf.length >= usbParse.len) {
+          handleIncomingFrame(new Uint8Array(usbParse.buf));
+          usbParse.mode = "idle";
+        }
+        break;
+    }
+  }
+
+  function sendUsb(bytes) {
+    if (!state.usbWriter) return Promise.reject(new Error("Port USB indisponible."));
+    var hdr = new Uint8Array([0x3C /* '<' */, bytes.length & 0xFF, (bytes.length >> 8) & 0xFF]);
+    var out = new Uint8Array(hdr.length + bytes.length);
+    out.set(hdr, 0); out.set(bytes, hdr.length);
+    log("-> " + bytes.length + " octets (USB)", "out");
+    return state.usbWriter.write(out);
+  }
+
+  // ---------------- connect / disconnect lifecycle ----------------
+  function onConnected(label) {
+    state.connected = true;
+    setStatus("Connecte (" + label + ")", "connected");
+    els.btnDisconnect.disabled = false;
+    els.btnBle.disabled = true; els.btnUsb.disabled = true;
+    setFormEnabled(true);
+    log("Connexion " + label + " etablie.", "ok");
+    queryAndRefresh();
+  }
+
+  function onDisconnected() {
+    state.connected = false;
+    state.transport = null;
+    state.bleDevice = null; state.bleRx = null;
+    state.usbPort = null; state.usbReader = null; state.usbWriter = null;
+    setStatus("Non connecte", "idle");
+    els.btnDisconnect.disabled = true;
+    els.btnBle.disabled = false; els.btnUsb.disabled = false;
+    setFormEnabled(false);
+    els.deviceInfo.innerHTML = '<dt colspan="2" class="kv-empty" style="grid-column: 1 / -1;">Aucun appareil connecte pour le moment.</dt>';
+    els.fSsid.value = ""; els.fPwd.value = ""; els.fEnabled.checked = false;
+    els.ssidCount.textContent = "0"; els.pwdCount.textContent = "0";
+  }
+
+  function disconnect() {
+    if (state.transport === "ble" && state.bleDevice && state.bleDevice.gatt.connected) {
+      state.bleDevice.gatt.disconnect();
+    } else if (state.transport === "usb" && state.usbPort) {
+      Promise.resolve()
+        .then(function () { return state.usbReader ? state.usbReader.cancel() : null; })
+        .then(function () { return state.usbWriter ? state.usbWriter.close() : null; })
+        .then(function () { return state.usbPort.close(); })
+        .catch(function () {});
+    }
+    onDisconnected();
+    log("Deconnecte.", "info");
+  }
+
+  function queryAndRefresh() {
+    setStatus("Lecture...", "busy");
+    sendAndWait(new Uint8Array([CMD_DEVICE_QUERY, 3]))
+      .then(function () { return sendAndWait(new Uint8Array([CMD_GET_CUSTOM_VARS])); })
+      .then(function () { setStatus("Connecte (" + (state.transport === "ble" ? "Bluetooth" : "USB") + ")", "connected"); })
+      .catch(function (e) { log("Lecture impossible : " + e.message, "err"); setStatus("Connecte", "connected"); });
+  }
+
+  // ---------------- save flow ----------------
+  function saveSettings() {
+    var ssid = els.fSsid.value;
+    var pwd = els.fPwd.value;
+    var enabled = els.fEnabled.checked ? "1" : "0";
+
+    els.btnSave.disabled = true;
+    setStatus("Enregistrement...", "busy");
+
+    var chain = Promise.resolve();
+    if (ssid.length > 0) {
+      chain = chain.then(function () { return sendAndWait(textFrame(CMD_SET_CUSTOM_VAR, "wifi_ssid:" + ssid)); });
+    }
+    if (pwd.length > 0) {
+      chain = chain.then(function () { return sendAndWait(textFrame(CMD_SET_CUSTOM_VAR, "wifi_pwd:" + pwd)); });
+    }
+    chain = chain.then(function () { return sendAndWait(textFrame(CMD_SET_CUSTOM_VAR, "wifi_enabled:" + enabled)); });
+
+    chain
+      .then(function () {
+        log("Reglages enregistres. Bascule a chaud possible depuis la page WIFI de l'ecran, ou au prochain redemarrage.", "ok");
+        els.fPwd.value = ""; els.pwdCount.textContent = "0";
+      })
+      .catch(function (e) { log("Echec de l'enregistrement : " + e.message, "err"); })
+      .then(function () { els.btnSave.disabled = false; setStatus("Connecte (" + (state.transport === "ble" ? "Bluetooth" : "USB") + ")", "connected"); });
+  }
+
+  // ---------------- wire up ----------------
+  els.btnBle.addEventListener("click", connectBle);
+  els.btnUsb.addEventListener("click", connectUsb);
+  els.btnDisconnect.addEventListener("click", disconnect);
+  els.btnRefresh.addEventListener("click", function () {
+    setStatus("Lecture...", "busy");
+    sendAndWait(new Uint8Array([CMD_GET_CUSTOM_VARS]))
+      .then(function () { setStatus("Connecte (" + (state.transport === "ble" ? "Bluetooth" : "USB") + ")", "connected"); })
+      .catch(function (e) { log("Lecture impossible : " + e.message, "err"); setStatus("Connecte", "connected"); });
+  });
+  els.btnSave.addEventListener("click", saveSettings);
+
+  // ---------------- capability check ----------------
+  var hasBle = !!navigator.bluetooth;
+  var hasUsb = !!navigator.serial;
+  if (!hasBle) els.btnBle.disabled = true;
+  if (!hasUsb) els.btnUsb.disabled = true;
+  if (!hasBle && !hasUsb) {
+    els.unsupportedNote.hidden = false;
+    els.unsupportedNote.textContent = "Ni Web Bluetooth ni Web Serial ne sont disponibles ici. Ouvre cette page dans Chrome ou Edge, sur Windows ou Android.";
+  } else if (!hasUsb) {
+    els.unsupportedNote.hidden = false;
+    els.unsupportedNote.textContent = "USB indisponible dans ce navigateur (Web Serial). Le Bluetooth reste utilisable.";
+  } else if (!hasBle) {
+    els.unsupportedNote.hidden = false;
+    els.unsupportedNote.textContent = "Bluetooth indisponible dans ce navigateur (Web Bluetooth). L'USB reste utilisable.";
+  }
+
+  log("Page prete. " + (hasBle ? "Bluetooth " : "") + (hasUsb ? "USB " : "") + "disponible(s) dans ce navigateur.", "info");
+})();
+</script>

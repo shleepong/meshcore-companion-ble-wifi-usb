@@ -1,0 +1,324 @@
+From 264a076dc9e9ad641ec0de34787263dae15c8d44 Mon Sep 17 00:00:00 2001
+From: GNB Build <palimpseste@quidam.eu>
+Date: Sat, 29 Aug 2026 15:42:29 +0200
+Subject: [PATCH 2/7] companion: add dual BLE+WiFi transport, both active
+ simultaneously
+
+New env heltec_v4_companion_radio_ble_wifi / heltec_tracker_v2_companion_radio_ble_wifi
+(DUAL_BLE_WIFI=1), separate from the existing companion_radio_ble/_wifi envs
+(both left untouched).
+
+Rebased onto companion-v1.17.1 (was stuck on a ~3-minor-version-old base,
+the previous upstream fork we tracked has since disappeared from GitHub).
+Original design (25/07) was single-transport-active, switched at reboot,
+with a 30s-timeout BLE fallback if WiFi failed to join. Superseded here by
+the native MultiSerialInterface introduced upstream since: Bluetooth and
+WiFi are now registered as two independent interfaces and run permanently
+side by side (interface_manager.loop() services both every iteration) --
+no reboot switch, no "which transport is the board on" ambiguity, no
+fallback logic needed since BLE never goes away in the first place.
+
+wifi_ssid/wifi_pwd/wifi_enabled remain configurable over CMD_SET_CUSTOM_VAR
+(id 41) on whichever transport is reachable -- no new protocol command
+needed on the app side. No hardcoded WiFi credentials anywhere in this
+build (unlike the existing plain _wifi envs, which bake WIFI_SSID/WIFI_PWD
+at compile time) -- fully config-free at compile time, safe to distribute
+as one binary. wifi_ssid/wifi_pwd/wifi_enabled are persisted through the
+NodePrefs ConfigSerializer (CompanionPrefs::structure()), guarded by
+#ifdef DUAL_BLE_WIFI so other builds are unaffected.
+
+Not yet recompiled/retested on this base -- next step.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+---
+ examples/companion_radio/DataStore.cpp    |  5 +++
+ examples/companion_radio/MyMesh.cpp       | 38 ++++++++++++++++
+ examples/companion_radio/NodePrefs.h      | 14 ++++++
+ examples/companion_radio/main.cpp         | 53 ++++++++++++++++++++---
+ variants/heltec_tracker_v2/platformio.ini | 36 ++++++++++++++-
+ variants/heltec_v4/platformio.ini         | 36 ++++++++++++++-
+ 6 files changed, 173 insertions(+), 9 deletions(-)
+
+diff --git a/examples/companion_radio/DataStore.cpp b/examples/companion_radio/DataStore.cpp
+index 06c56a7a..d6d14bb9 100644
+--- a/examples/companion_radio/DataStore.cpp
++++ b/examples/companion_radio/DataStore.cpp
+@@ -238,6 +238,11 @@ void DataStore::loadPrefsInt(const char *filename, NodePrefs& _prefs) {
+     file.read((uint8_t *)&_prefs.rx_boosted_gain, sizeof(_prefs.rx_boosted_gain));         // 89
+     file.read((uint8_t *)_prefs.default_scope_name, sizeof(_prefs.default_scope_name));    // 90
+     file.read((uint8_t *)_prefs.default_scope_key, sizeof(_prefs.default_scope_key));     // 121
++    // Dual BLE/WiFi companion builds only (DUAL_BLE_WIFI) -- appended at the end so
++    // older prefs files (shorter reads) simply leave these at their zero-init default.
++    file.read((uint8_t *)_prefs.wifi_ssid, sizeof(_prefs.wifi_ssid));                      // 137
++    file.read((uint8_t *)_prefs.wifi_password, sizeof(_prefs.wifi_password));              // 169
++    file.read((uint8_t *)&_prefs.wifi_enabled, sizeof(_prefs.wifi_enabled));               // 233
+ 
+     // migrate old fields
+     _prefs.setRepeatEn(_prefs._client_repeat != 0);
+diff --git a/examples/companion_radio/MyMesh.cpp b/examples/companion_radio/MyMesh.cpp
+index 2c334066..5c9f996f 100644
+--- a/examples/companion_radio/MyMesh.cpp
++++ b/examples/companion_radio/MyMesh.cpp
+@@ -1814,6 +1814,22 @@ void MyMesh::handleCmdFrame(size_t len) {
+       strcpy(dp, sensors.getSettingValue(i));
+       dp = strchr(dp, 0);
+     }
++#ifdef DUAL_BLE_WIFI
++    // Not routed through SensorManager (wifi_ssid/wifi_enabled aren't sensors) -- appended
++    // directly here so they show up alongside the rest in a CMD_GET_CUSTOM_VARS listing.
++    // wifi_pwd is intentionally omitted from readback.
++    if (dp - (char *)&out_frame[1] < 140) {
++      *dp++ = ',';
++      strcpy(dp, "wifi_ssid"); dp = strchr(dp, 0);
++      *dp++ = ':';
++      strcpy(dp, _prefs.wifi_ssid); dp = strchr(dp, 0);
++      *dp++ = ',';
++      strcpy(dp, "wifi_enabled"); dp = strchr(dp, 0);
++      *dp++ = ':';
++      *dp++ = _prefs.wifi_enabled ? '1' : '0';
++      *dp = 0;
++    }
++#endif
+     _serial->writeFrame(out_frame, dp - (char *)out_frame);
+   } else if (cmd_frame[0] == CMD_SET_CUSTOM_VAR && len >= 4) {
+     cmd_frame[len] = 0;
+@@ -1821,6 +1837,28 @@ void MyMesh::handleCmdFrame(size_t len) {
+     char *np = strchr(sp, ':'); // look for separator char
+     if (np) {
+       *np++ = 0; // modify 'cmd_frame', replace ':' with null
++#ifdef DUAL_BLE_WIFI
++      // wifi_ssid/wifi_pwd/wifi_enabled: handled here directly rather than through
++      // SensorManager, since they configure the companion transport itself, not a
++      // sensor. Reachable over whichever transport (BLE or WiFi) is currently active,
++      // see main.cpp's DUAL_BLE_WIFI boot logic for how wifi_enabled is consumed.
++      if (strcmp(sp, "wifi_ssid") == 0) {
++        StrHelper::strncpy(_prefs.wifi_ssid, np, sizeof(_prefs.wifi_ssid));
++        savePrefs();
++        writeOKFrame();
++        return;
++      } else if (strcmp(sp, "wifi_pwd") == 0) {
++        StrHelper::strncpy(_prefs.wifi_password, np, sizeof(_prefs.wifi_password));
++        savePrefs();
++        writeOKFrame();
++        return;
++      } else if (strcmp(sp, "wifi_enabled") == 0) {
++        _prefs.wifi_enabled = (np[0] == '1') ? 1 : 0;
++        savePrefs();
++        writeOKFrame();
++        return;
++      }
++#endif
+       bool success = sensors.setSettingValue(sp, np);
+       if (success) {
+         #if ENV_INCLUDE_GPS == 1
+diff --git a/examples/companion_radio/NodePrefs.h b/examples/companion_radio/NodePrefs.h
+index 21766de8..22fdc1f7 100644
+--- a/examples/companion_radio/NodePrefs.h
++++ b/examples/companion_radio/NodePrefs.h
+@@ -41,6 +41,15 @@ public:
+   char default_scope_name[31];
+   uint8_t default_scope_key[16];
+ 
++  // Dual BLE/WiFi companion builds only (DUAL_BLE_WIFI): which transport to
++  // start on next boot, and the station credentials to use. Set via the
++  // standard CMD_SET_CUSTOM_VAR protocol command (keys "wifi_ssid" /
++  // "wifi_pwd" / "wifi_enabled"), reachable over whichever transport is
++  // currently active. Registered below in CompanionPrefs::structure().
++  char wifi_ssid[32];
++  char wifi_password[64];
++  uint8_t wifi_enabled = 0;   // 0 = boot into BLE (default), 1 = attempt WiFi first
++
+ private:
+   class RadioPrefs : public ConfigSerializer {  // COPIED from CommonCLI (for now)
+     NodePrefs* _parent;
+@@ -115,6 +124,11 @@ private:
+       def("tel_base", _parent->telemetry_mode_base);
+       def("tel_loc", _parent->telemetry_mode_loc);
+       def("tel_env", _parent->telemetry_mode_env);
++    #ifdef DUAL_BLE_WIFI
++      def("wifi_ssid", _parent->wifi_ssid, sizeof(_parent->wifi_ssid));
++      def("wifi_pwd", _parent->wifi_password, sizeof(_parent->wifi_password));
++      def("wifi_enabled", _parent->wifi_enabled);
++    #endif
+     }
+   public:
+     CompanionPrefs(NodePrefs* parent) : _parent(parent) { }
+diff --git a/examples/companion_radio/main.cpp b/examples/companion_radio/main.cpp
+index 89f0e6cb..446d6a27 100644
+--- a/examples/companion_radio/main.cpp
++++ b/examples/companion_radio/main.cpp
+@@ -32,7 +32,10 @@ MultiSerialInterface interface_manager;
+ #endif
+ 
+ // include wifi interface
+-#ifdef WIFI_SSID
++// OBSERVER_WIFI_COMPANION: WiFi owned by the MQTT bridge (see MqttObserver.cpp).
++// DUAL_BLE_WIFI: runtime-configurable WiFi companion, registered alongside
++// Bluetooth via interface_manager -- see main.cpp's setup() for both.
++#if defined(WIFI_SSID) || defined(OBSERVER_WIFI_COMPANION) || defined(DUAL_BLE_WIFI)
+   #ifndef TCP_PORT
+     #define TCP_PORT 5000
+   #endif
+@@ -108,7 +111,7 @@ void halt() {
+ }
+ 
+ /* WIFI RECONNECT TRACKERS */
+-#if defined(ESP32) && defined(WIFI_SSID)
++#if defined(ESP32) && (defined(WIFI_SSID) || defined(DUAL_BLE_WIFI))
+   bool wifi_needs_reconnect = false;
+   unsigned long last_wifi_reconnect_attempt = 0;
+ #endif
+@@ -191,7 +194,44 @@ void setup() {
+ #endif
+ 
+ // add wifi interface
+-#ifdef WIFI_SSID
++#if defined(OBSERVER_WIFI_COMPANION)
++  // WiFi is owned by the MQTT bridge (see MqttObserver). The companion app
++  // connects over TCP once the bridge brings the link up; just start the server.
++  board.setInhibitSleep(true);   // prevent sleep when WiFi is active
++  wifi_interface.begin(TCP_PORT);
++  interface_manager.addInterface(InterfaceType::WiFi, &wifi_interface);
++#elif defined(DUAL_BLE_WIFI)
++  // Runtime-configurable WiFi companion: SSID/password come from persisted
++  // prefs (set via CMD_SET_CUSTOM_VAR, keys "wifi_ssid"/"wifi_pwd"/
++  // "wifi_enabled"), not compile-time macros -- no hardcoded credentials in
++  // the binary. Registered into interface_manager alongside Bluetooth above:
++  // both run simultaneously, no reboot switch, no "which transport is the
++  // board on" guesswork -- the app can connect over either at any time.
++  {
++    NodePrefs* np = the_mesh.getNodePrefs();
++    if (np->wifi_enabled && np->wifi_ssid[0] != '\0') {
++      WIFI_DEBUG_PRINTLN("wifi_enabled is set, attempting to join '%s'...", np->wifi_ssid);
++      board.setInhibitSleep(true);   // prevent sleep while WiFi is active
++      WiFi.setAutoReconnect(true);
++      WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info){
++          if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
++              WIFI_DEBUG_PRINTLN("WiFi disconnected. Flagging for reconnect...");
++              wifi_needs_reconnect = true;
++          } else if (event == ARDUINO_EVENT_WIFI_STA_GOT_IP) {
++              WIFI_DEBUG_PRINTLN("WiFi connected successfully!");
++              wifi_needs_reconnect = false;
++          }
++      });
++      WiFi.mode(WIFI_STA);
++      WiFi.begin(np->wifi_ssid, np->wifi_password);
++      wifi_interface.begin(TCP_PORT);
++      interface_manager.addInterface(InterfaceType::WiFi, &wifi_interface);
++    }
++    // wifi_enabled=0, or no SSID configured yet: Bluetooth (added above) is
++    // always available to reach the device and set wifi_ssid/wifi_pwd/
++    // wifi_enabled for next boot -- see CMD_SET_CUSTOM_VAR in MyMesh.cpp.
++  }
++#elif defined(WIFI_SSID)
+   board.setInhibitSleep(true);   // prevent sleep when WiFi is active
+   WiFi.setAutoReconnect(true);
+ 
+@@ -262,8 +302,11 @@ void loop() {
+ #endif
+   }
+ 
+-#if defined(ESP32) && defined(WIFI_SSID)
+-  // Safely attempt to reconnect every 10 seconds if flagged
++#if defined(ESP32) && (defined(WIFI_SSID) || defined(DUAL_BLE_WIFI))
++  // Safely attempt to reconnect every 10 seconds if flagged. For DUAL_BLE_WIFI,
++  // this is a no-op until WiFi is actually configured+attempted in setup()
++  // (wifi_needs_reconnect only gets set by the WiFi.onEvent handler registered
++  // there, which only runs once WiFi.begin() was called at all).
+   if (wifi_needs_reconnect && (millis() - last_wifi_reconnect_attempt > 10000)) {
+     WIFI_DEBUG_PRINTLN("Attempting manual WiFi reconnect...");
+     WiFi.disconnect();
+diff --git a/variants/heltec_tracker_v2/platformio.ini b/variants/heltec_tracker_v2/platformio.ini
+index d040b72f..ab54e5bf 100644
+--- a/variants/heltec_tracker_v2/platformio.ini
++++ b/variants/heltec_tracker_v2/platformio.ini
+@@ -186,8 +186,40 @@ build_flags =
+   -D MAX_GROUP_CHANNELS=40
+   -D DISPLAY_CLASS=ST7735Display
+   -D WIFI_DEBUG_LOGGING=1
+-  -D WIFI_SSID='"myssid"'
+-  -D WIFI_PWD='"mypwd"'
++  -D WIFI_SSID='""'
++  -D WIFI_PWD='""'
++  -D OFFLINE_QUEUE_SIZE=256
++;  -D MESH_PACKET_LOGGING=1
++;  -D MESH_DEBUG=1
++build_src_filter = ${Heltec_tracker_v2.build_src_filter}
++  +<helpers/ui/ST7735Display.cpp>
++  +<helpers/ui/MomentaryButton.cpp>
++  +<helpers/esp32/*.cpp>
++  +<../examples/companion_radio/*.cpp>
++  +<../examples/companion_radio/ui-new/*.cpp>
++lib_deps =
++  ${Heltec_tracker_v2.lib_deps}
++  densaugeo/base64 @ ~1.4.0
++
++[env:heltec_tracker_v2_companion_radio_ble_wifi]
++; Dual-transport companion: BLE works out of the box, no setup needed.
++; Recipient configures wifi_ssid/wifi_pwd/wifi_enabled via CMD_SET_CUSTOM_VAR
++; (over BLE); once set, WiFi joins on the next boot and runs alongside BLE
++; simultaneously (interface_manager, no reboot switch, no exclusivity) --
++; the app can connect over either transport at any time. See DUAL_BLE_WIFI
++; in main.cpp.
++extends = Heltec_tracker_v2
++build_flags =
++  ${Heltec_tracker_v2.build_flags}
++  -I examples/companion_radio/ui-new
++  -D MAX_CONTACTS=350
++  -D MAX_GROUP_CHANNELS=40
++  -D DISPLAY_CLASS=ST7735Display
++  -D DUAL_BLE_WIFI=1
++  -D BLE_PIN_CODE=123456   ; dynamic, random PIN
++  -D AUTO_SHUTDOWN_MILLIVOLTS=3400
++  -D BLE_DEBUG_LOGGING=1
++  -D WIFI_DEBUG_LOGGING=1
+   -D OFFLINE_QUEUE_SIZE=256
+ ;  -D MESH_PACKET_LOGGING=1
+ ;  -D MESH_DEBUG=1
+diff --git a/variants/heltec_v4/platformio.ini b/variants/heltec_v4/platformio.ini
+index d718c006..ac1b4dc8 100644
+--- a/variants/heltec_v4/platformio.ini
++++ b/variants/heltec_v4/platformio.ini
+@@ -233,8 +233,40 @@ build_flags =
+   -D OFFLINE_QUEUE_SIZE=256
+   -D DISPLAY_CLASS=SSD1306Display
+   -D WIFI_DEBUG_LOGGING=1
+-  -D WIFI_SSID='"myssid"'
+-  -D WIFI_PWD='"mypwd"'
++  -D WIFI_SSID='""'
++  -D WIFI_PWD='""'
++;  -D MESH_PACKET_LOGGING=1
++;  -D MESH_DEBUG=1
++build_src_filter = ${heltec_v4_oled.build_src_filter}
++  +<helpers/ui/SSD1306Display.cpp>
++  +<helpers/ui/MomentaryButton.cpp>
++  +<helpers/esp32/*.cpp>
++  +<../examples/companion_radio/*.cpp>
++  +<../examples/companion_radio/ui-new/*.cpp>
++lib_deps =
++  ${heltec_v4_oled.lib_deps}
++  densaugeo/base64 @ ~1.4.0
++
++[env:heltec_v4_companion_radio_ble_wifi]
++; Dual-transport companion: BLE works out of the box, no setup needed.
++; Recipient configures wifi_ssid/wifi_pwd/wifi_enabled via CMD_SET_CUSTOM_VAR
++; (over BLE); once set, WiFi joins on the next boot and runs alongside BLE
++; simultaneously (interface_manager, no reboot switch, no exclusivity) --
++; the app can connect over either transport at any time. See DUAL_BLE_WIFI
++; in main.cpp.
++extends = heltec_v4_oled
++build_flags =
++  ${heltec_v4_oled.build_flags}
++  -I examples/companion_radio/ui-new
++  -D MAX_CONTACTS=350
++  -D MAX_GROUP_CHANNELS=40
++  -D DISPLAY_CLASS=SSD1306Display
++  -D DUAL_BLE_WIFI=1
++  -D BLE_PIN_CODE=123456   ; dynamic, random PIN
++  -D AUTO_SHUTDOWN_MILLIVOLTS=3400
++  -D BLE_DEBUG_LOGGING=1
++  -D WIFI_DEBUG_LOGGING=1
++  -D OFFLINE_QUEUE_SIZE=256
+ ;  -D MESH_PACKET_LOGGING=1
+ ;  -D MESH_DEBUG=1
+ build_src_filter = ${heltec_v4_oled.build_src_filter}

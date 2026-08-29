@@ -1,0 +1,91 @@
+From 856241efe5bce11e66f2bf1959408e4a9a970dab Mon Sep 17 00:00:00 2001
+From: GNB Build <palimpseste@quidam.eu>
+Date: Sat, 29 Aug 2026 21:06:56 +0200
+Subject: [PATCH 7/7] Fix TCP companion server not restarting after WiFi off/on
+ cycle
+
+toggleWiFi()'s "turn off" branch calls WiFi.mode(WIFI_OFF), which tears
+down the whole STA netif/lwIP stack. This silently kills the listening
+socket opened by SerialWifiInterface's WiFiServer, originally started
+once in main.cpp's setup(). Turning WiFi back on only called
+WiFi.mode(WIFI_STA) + WiFi.begin(): the radio itself reconnects fine
+(IP obtained, screen shows it correctly), but nothing was listening on
+TCP_PORT any more.
+
+Confirmed on real hardware (Heltec V4.3, 29/08/2026): repeated
+connection timeouts from the companion app after configuring WiFi and
+toggling it off/on/off/on from the screen, without an intervening
+reboot. A full reboot always fixed it, since setup() re-runs
+wifi_interface.begin() from scratch -- pointing straight at the
+listener, not the radio, as the actual failure.
+
+Fix: re-call wifi_interface.begin(TCP_PORT) every time WiFi is turned
+back on from the WIFI page, not just once at boot.
+SerialWifiInterface::begin() has no "already started" guard, so
+re-calling it is safe.
+---
+ examples/companion_radio/main.cpp          | 11 ++++++++---
+ examples/companion_radio/ui-new/UITask.cpp | 19 +++++++++++++++----
+ 2 files changed, 23 insertions(+), 7 deletions(-)
+
+diff --git a/examples/companion_radio/main.cpp b/examples/companion_radio/main.cpp
+index 757edb14..e5c99a30 100644
+--- a/examples/companion_radio/main.cpp
++++ b/examples/companion_radio/main.cpp
+@@ -218,9 +218,14 @@ void setup() {
+   // board on" guesswork -- the app can connect over either at any time.
+   //
+   // wifi_interface.begin() (the TCP server) starts unconditionally here,
+-  // exactly once, regardless of wifi_enabled -- this lets the WIFI home
+-  // page (UITask::toggleWiFi(), ui-new/UITask.cpp) turn the radio on/off
+-  // live afterwards without ever re-calling begin() on the server itself.
++  // regardless of wifi_enabled, so a first connection attempt below (or a
++  // later one from the WIFI home page) always has a listener ready.
++  // NOTE: UITask::toggleWiFi() (ui-new/UITask.cpp) re-calls begin() again
++  // itself every time WiFi is turned back on -- WiFi.mode(WIFI_OFF) on
++  // toggle-off tears down the whole netif and silently kills this
++  // listening socket, confirmed as a real bug on real hardware
++  // (29/08/2026, see the comment above UITask::toggleWiFi() for the full
++  // story). The call here still matters for the very first boot.
+   //
+   // WiFi.mode() must run before WiFiServer::begin() (wifi_interface.begin()
+   // below) or before WiFi.onEvent()/setAutoReconnect() -- any of those,
+diff --git a/examples/companion_radio/ui-new/UITask.cpp b/examples/companion_radio/ui-new/UITask.cpp
+index 31119a16..1613c56f 100644
+--- a/examples/companion_radio/ui-new/UITask.cpp
++++ b/examples/companion_radio/ui-new/UITask.cpp
+@@ -1013,12 +1013,22 @@ bool UITask::isWiFiEnabled() {
+ // gate the TCP server's frame routing, not the WiFi radio itself (see
+ // helpers/esp32/SerialWifiInterface.cpp). So the actual join/leave and
+ // interface_manager registration both happen here, not through a shallow
+-// enable()/disable() call. wifi_interface.begin() (the TCP server) is
+-// started exactly once, unconditionally, in main.cpp's setup() -- never
+-// re-called from here. WiFi.mode() itself is also already brought up at
+-// boot unconditionally (see main.cpp) -- toggling it here afterwards
++// enable()/disable() call. WiFi.mode() itself is also already brought up
++// at boot unconditionally (see main.cpp) -- toggling it here afterwards
+ // (STA<->OFF) is a normal, supported operation, not the same situation
+ // that crashed before any mode had ever been set.
++//
++// wifi_interface.begin() (the TCP server) DOES have to be re-called every
++// time WiFi comes back on, not just once at boot -- confirmed as a real bug
++// on real hardware (29/08/2026): WiFi.mode(WIFI_OFF) on the "turn off"
++// branch below tears down the whole STA netif/lwIP stack, which silently
++// kills the WiFiServer's listening socket opened by the first begin() call
++// in main.cpp's setup(). The radio itself reconnects fine on the next
++// toggle-on (IP obtained, screen shows it correctly), but nothing is
++// listening on TCP_PORT any more, so the companion app times out trying to
++// connect -- only a full reboot (which re-runs wifi_interface.begin() from
++// scratch in setup()) restored it. SerialWifiInterface::begin() has no
++// internal "already started" guard, so re-calling it here is safe.
+ void UITask::toggleWiFi() {
+   if (wifi_active) {
+     // currently on (connected or still trying) -- turn off
+@@ -1036,6 +1046,7 @@ void UITask::toggleWiFi() {
+       return;
+     }
+     WiFi.mode(WIFI_STA);
++    wifi_interface.begin(TCP_PORT);   // re-create the TCP listener, torn down by the previous WIFI_OFF
+     WiFi.begin(_node_prefs->wifi_ssid, _node_prefs->wifi_password);
+     interface_manager.addInterface(InterfaceType::WiFi, &wifi_interface);
+     wifi_active = true;
