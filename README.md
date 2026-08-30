@@ -1,8 +1,10 @@
 # MeshCore Companion : BLE ou WiFi (exclusif) + USB
 
----
+<p align="center">
+  <img src="docs/screen-v4-wifi.jpg" alt="Heltec V4 affichant WiFi actif et son adresse IP">
+</p>
 
-![Heltec V4 affichant WiFi actif et son adresse IP](docs/screen-v4-wifi.jpg)
+---
 
 Firmware communautaire pour le rôle Companion de [MeshCore](https://github.com/meshcore-dev/MeshCore),
 basé sur le tag officiel `companion-v1.17.1`. Bluetooth **ou** WiFi, un seul actif à
