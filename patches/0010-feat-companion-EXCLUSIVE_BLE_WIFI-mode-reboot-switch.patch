@@ -1,0 +1,473 @@
+From 2782fce1873e8dacb5d90eec0f912c5591a12227 Mon Sep 17 00:00:00 2001
+From: GNB Build <palimpseste@quidam.eu>
+Date: Sun, 30 Aug 2026 13:21:51 +0200
+Subject: [PATCH 10/17] feat(companion): EXCLUSIVE_BLE_WIFI mode,
+ reboot-switched BLE/WiFi (V4.3)
+
+New companion mode alongside the existing DUAL_BLE_WIFI (both radios at
+once): EXCLUSIVE_BLE_WIFI initializes exactly one of BLE or WiFi per boot,
+picked by the persisted wifi_enabled flag, and switches between them via a
+full reboot (WIFI or BLUETOOTH home page, press to switch) rather than a
+live radio toggle. No new BLEDevice deinit/reinit code path: switching just
+flips wifi_enabled, saves prefs, and calls ESP.restart(), landing back on
+the same already-exercised single-purpose boot path each time.
+
+Motivation: diagnosed on the Tracker V2 (no PSRAM) that running BLE and
+WiFi's own initialization together left WiFi's association without enough
+free heap to ever resolve (measured ~33KB free right before WiFi.begin(),
+with BLE already up -- no connect, no disconnect event, just silence).
+Rather than chase a more ambitious live-coexistence fix without a team or
+several boards to validate it over time, this trades true simultaneity for
+robustness: never pay for both radios' buffers at once.
+
+Wired through the existing DUAL_BLE_WIFI touch points (wifi_ssid/wifi_pwd/
+wifi_enabled custom vars in MyMesh.cpp/NodePrefs.h, the WIFI home page in
+UITask.cpp, the wifi_active/wifi_interface/interface_manager plumbing in
+main.cpp) by broadening their guards to '#if defined(DUAL_BLE_WIFI) ||
+defined(EXCLUSIVE_BLE_WIFI)' wherever the behavior is identical between the
+two modes; only main.cpp's setup() bring-up and UITask::toggleWiFi() (plus
+the BLUETOOTH page's KEY_ENTER handler, which now mirrors the WIFI page
+symmetrically in this mode) actually differ. DUAL_BLE_WIFI's own code paths
+are untouched -- confirmed byte-identical firmware.bin before/after on both
+existing dual envs (heltec_v4 and heltec_tracker_v2).
+
+New env: heltec_v4_companion_radio_ble_wifi_exclusive. Not needed on this
+board (the existing dual env works fine, PSRAM gives it plenty of headroom)
+-- offered as a lower-footprint alternative, and to exercise the mechanism
+before porting it to boards that actually need it.
+
+Compiled, not yet flashed or tested on real hardware.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+---
+ examples/companion_radio/MyMesh.cpp        |  8 ++-
+ examples/companion_radio/NodePrefs.h       | 14 ++--
+ examples/companion_radio/main.cpp          | 84 ++++++++++++++++++----
+ examples/companion_radio/ui-new/UITask.cpp | 83 +++++++++++++++++++--
+ examples/companion_radio/ui-new/UITask.h   |  2 +-
+ variants/heltec_v4/platformio.ini          | 39 ++++++++++
+ 6 files changed, 200 insertions(+), 30 deletions(-)
+
+diff --git a/examples/companion_radio/MyMesh.cpp b/examples/companion_radio/MyMesh.cpp
+index dc915bbd..a0f0ddd1 100644
+--- a/examples/companion_radio/MyMesh.cpp
++++ b/examples/companion_radio/MyMesh.cpp
+@@ -1814,7 +1814,7 @@ void MyMesh::handleCmdFrame(size_t len) {
+       strcpy(dp, sensors.getSettingValue(i));
+       dp = strchr(dp, 0);
+     }
+-#ifdef DUAL_BLE_WIFI
++#if defined(DUAL_BLE_WIFI) || defined(EXCLUSIVE_BLE_WIFI)
+     // Not routed through SensorManager (wifi_ssid/wifi_enabled aren't sensors) -- appended
+     // directly here so they show up alongside the rest in a CMD_GET_CUSTOM_VARS listing.
+     // wifi_pwd is intentionally omitted from readback.
+@@ -1844,11 +1844,13 @@ void MyMesh::handleCmdFrame(size_t len) {
+     char *np = strchr(sp, ':'); // look for separator char
+     if (np) {
+       *np++ = 0; // modify 'cmd_frame', replace ':' with null
+-#ifdef DUAL_BLE_WIFI
++#if defined(DUAL_BLE_WIFI) || defined(EXCLUSIVE_BLE_WIFI)
+       // wifi_ssid/wifi_pwd/wifi_enabled: handled here directly rather than through
+       // SensorManager, since they configure the companion transport itself, not a
+       // sensor. Reachable over whichever transport (BLE or WiFi) is currently active,
+-      // see main.cpp's DUAL_BLE_WIFI boot logic for how wifi_enabled is consumed.
++      // see main.cpp's DUAL_BLE_WIFI/EXCLUSIVE_BLE_WIFI boot logic for how
++      // wifi_enabled is consumed (next boot for both; EXCLUSIVE_BLE_WIFI also
++      // needs a reboot to actually switch transport, see UITask::toggleWiFi()).
+       if (strcmp(sp, "wifi_ssid") == 0) {
+         StrHelper::strncpy(_prefs.wifi_ssid, np, sizeof(_prefs.wifi_ssid));
+         savePrefs();
+diff --git a/examples/companion_radio/NodePrefs.h b/examples/companion_radio/NodePrefs.h
+index 22fdc1f7..84ef031e 100644
+--- a/examples/companion_radio/NodePrefs.h
++++ b/examples/companion_radio/NodePrefs.h
+@@ -41,11 +41,13 @@ public:
+   char default_scope_name[31];
+   uint8_t default_scope_key[16];
+ 
+-  // Dual BLE/WiFi companion builds only (DUAL_BLE_WIFI): which transport to
+-  // start on next boot, and the station credentials to use. Set via the
+-  // standard CMD_SET_CUSTOM_VAR protocol command (keys "wifi_ssid" /
+-  // "wifi_pwd" / "wifi_enabled"), reachable over whichever transport is
+-  // currently active. Registered below in CompanionPrefs::structure().
++  // Runtime-configurable WiFi companion builds only (DUAL_BLE_WIFI, both
++  // transports at once, or EXCLUSIVE_BLE_WIFI, one or the other, switched by
++  // reboot): which transport to start on next boot, and the station
++  // credentials to use. Set via the standard CMD_SET_CUSTOM_VAR protocol
++  // command (keys "wifi_ssid" / "wifi_pwd" / "wifi_enabled"), reachable over
++  // whichever transport is currently active. Registered below in
++  // CompanionPrefs::structure().
+   char wifi_ssid[32];
+   char wifi_password[64];
+   uint8_t wifi_enabled = 0;   // 0 = boot into BLE (default), 1 = attempt WiFi first
+@@ -124,7 +126,7 @@ private:
+       def("tel_base", _parent->telemetry_mode_base);
+       def("tel_loc", _parent->telemetry_mode_loc);
+       def("tel_env", _parent->telemetry_mode_env);
+-    #ifdef DUAL_BLE_WIFI
++    #if defined(DUAL_BLE_WIFI) || defined(EXCLUSIVE_BLE_WIFI)
+       def("wifi_ssid", _parent->wifi_ssid, sizeof(_parent->wifi_ssid));
+       def("wifi_pwd", _parent->wifi_password, sizeof(_parent->wifi_password));
+       def("wifi_enabled", _parent->wifi_enabled);
+diff --git a/examples/companion_radio/main.cpp b/examples/companion_radio/main.cpp
+index e5c99a30..66b4e13c 100644
+--- a/examples/companion_radio/main.cpp
++++ b/examples/companion_radio/main.cpp
+@@ -34,8 +34,12 @@ MultiSerialInterface interface_manager;
+ // include wifi interface
+ // OBSERVER_WIFI_COMPANION: WiFi owned by the MQTT bridge (see MqttObserver.cpp).
+ // DUAL_BLE_WIFI: runtime-configurable WiFi companion, registered alongside
+-// Bluetooth via interface_manager -- see main.cpp's setup() for both.
+-#if defined(WIFI_SSID) || defined(OBSERVER_WIFI_COMPANION) || defined(DUAL_BLE_WIFI)
++// Bluetooth via interface_manager -- both active at once, see setup() below.
++// EXCLUSIVE_BLE_WIFI: same runtime configuration (wifi_ssid/wifi_pwd/wifi_enabled),
++// but only ever one of BLE or WiFi initialized per boot -- switching means a
++// reboot, see UITask::toggleWiFi(). Exists for boards without PSRAM, where both
++// radios' buffers at once can starve WiFi's own association out of heap.
++#if defined(WIFI_SSID) || defined(OBSERVER_WIFI_COMPANION) || defined(DUAL_BLE_WIFI) || defined(EXCLUSIVE_BLE_WIFI)
+   #ifndef TCP_PORT
+     #define TCP_PORT 5000
+   #endif
+@@ -111,17 +115,17 @@ void halt() {
+ }
+ 
+ /* WIFI RECONNECT TRACKERS */
+-#if defined(ESP32) && (defined(WIFI_SSID) || defined(DUAL_BLE_WIFI))
++#if defined(ESP32) && (defined(WIFI_SSID) || defined(DUAL_BLE_WIFI) || defined(EXCLUSIVE_BLE_WIFI))
+   bool wifi_needs_reconnect = false;
+   unsigned long last_wifi_reconnect_attempt = 0;
+ #endif
+-#ifdef DUAL_BLE_WIFI
++#if defined(DUAL_BLE_WIFI) || defined(EXCLUSIVE_BLE_WIFI)
+   // Explicit state, read by UITask::isWiFiEnabled() -- WiFi.getMode() is NOT
+   // a usable proxy here: WiFi.mode(WIFI_STA) is now called unconditionally
+-  // at boot (needed to bring up the netif/lwIP stack before wifi_interface.begin(),
+-  // see the DUAL_BLE_WIFI setup() block), so WiFi.getMode() is WIFI_STA even
+-  // when nothing is configured/connected. This flag is the real source of
+-  // truth, set here at boot and by UITask::toggleWiFi().
++  // at boot for DUAL_BLE_WIFI (needed to bring up the netif/lwIP stack before
++  // wifi_interface.begin(), see the setup() block below), so WiFi.getMode()
++  // is WIFI_STA even when nothing is configured/connected. This flag is the
++  // real source of truth, set here at boot and by UITask::toggleWiFi().
+   bool wifi_active = false;
+ #endif
+ 
+@@ -197,7 +201,11 @@ void setup() {
+ #endif
+ 
+ // add bluetooth interface
+-#if defined(BLE_PIN_CODE)
++// EXCLUSIVE_BLE_WIFI starts BLE itself, conditionally, further down --
++// skipped here so it's never initialized on a boot where WiFi is about to
++// be used instead (the whole point: never pay for both radios' buffers at
++// the same time).
++#if defined(BLE_PIN_CODE) && !defined(EXCLUSIVE_BLE_WIFI)
+   bluetooth_interface.begin(BLE_NAME_PREFIX, the_mesh.getNodePrefs()->node_name, the_mesh.getBLEPin());
+   interface_manager.addInterface(InterfaceType::Bluetooth, &bluetooth_interface);
+ #endif
+@@ -260,6 +268,53 @@ void setup() {
+     // wifi_enabled for next boot -- see CMD_SET_CUSTOM_VAR in MyMesh.cpp.
+     // Can also be turned on live from the WIFI home page, see UITask::toggleWiFi().
+   }
++#elif defined(EXCLUSIVE_BLE_WIFI)
++  // Same runtime configuration as DUAL_BLE_WIFI (wifi_ssid/wifi_pwd/wifi_enabled,
++  // set via CMD_SET_CUSTOM_VAR, reachable over whichever transport is currently
++  // active) -- but only ONE of BLE or WiFi is ever initialized per boot, chosen
++  // right here by wifi_enabled. No live radio switch, no runtime BLEDevice
++  // deinit/reinit: UITask::toggleWiFi() just flips wifi_enabled and reboots
++  // (ESP.restart()), so each mode always starts from the same known-good,
++  // already-exercised boot path as the single-purpose BLE-only/WiFi-only envs --
++  // deliberately simple over clever, see the discussion that led here: on a
++  // board without PSRAM, BLE's own footprint (tens of KB, see SerialBLEInterface)
++  // was measured to leave WiFi's association without enough headroom to
++  // complete (confirmed on real hardware, 30/08/2026: ~33KB free heap right
++  // before WiFi.begin() with BLE already up, and WiFi never resolves to
++  // connected OR disconnected -- it just silently never gets there).
++  WiFi.mode(WIFI_STA);
++  WiFi.setAutoReconnect(true);
++  WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info){
++      if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
++          WIFI_DEBUG_PRINTLN("WiFi disconnected. Flagging for reconnect...");
++          wifi_needs_reconnect = true;
++      } else if (event == ARDUINO_EVENT_WIFI_STA_GOT_IP) {
++          WIFI_DEBUG_PRINTLN("WiFi connected successfully!");
++          wifi_needs_reconnect = false;
++      }
++  });
++  {
++    NodePrefs* np = the_mesh.getNodePrefs();
++    if (np->wifi_enabled && np->wifi_ssid[0] != '\0') {
++      // WiFi mode this boot: no BLE at all (see the skipped block above).
++      WIFI_DEBUG_PRINTLN("wifi_enabled is set, attempting to join '%s'...", np->wifi_ssid);
++      board.setInhibitSleep(true);   // prevent sleep while WiFi is active
++      wifi_interface.begin(TCP_PORT);
++      WiFi.begin(np->wifi_ssid, np->wifi_password);
++      interface_manager.addInterface(InterfaceType::WiFi, &wifi_interface);
++      wifi_active = true;
++    } else {
++      // Not configured for WiFi (or switched off): fall back to BLE, same as
++      // any BLE-only build -- always a way to reach the device and set
++      // wifi_ssid/wifi_pwd/wifi_enabled for next boot, see CMD_SET_CUSTOM_VAR
++      // in MyMesh.cpp. Switching to WiFi from here goes through the WIFI home
++      // page (UITask::toggleWiFi()), which reboots into the branch above.
++      #if defined(BLE_PIN_CODE)
++        bluetooth_interface.begin(BLE_NAME_PREFIX, the_mesh.getNodePrefs()->node_name, the_mesh.getBLEPin());
++        interface_manager.addInterface(InterfaceType::Bluetooth, &bluetooth_interface);
++      #endif
++    }
++  }
+ #elif defined(WIFI_SSID)
+   board.setInhibitSleep(true);   // prevent sleep when WiFi is active
+   WiFi.setAutoReconnect(true);
+@@ -331,11 +386,12 @@ void loop() {
+ #endif
+   }
+ 
+-#if defined(ESP32) && (defined(WIFI_SSID) || defined(DUAL_BLE_WIFI))
+-  // Safely attempt to reconnect every 10 seconds if flagged. For DUAL_BLE_WIFI,
+-  // this is a no-op until WiFi is actually configured+attempted in setup()
+-  // (wifi_needs_reconnect only gets set by the WiFi.onEvent handler registered
+-  // there, which only runs once WiFi.begin() was called at all).
++#if defined(ESP32) && (defined(WIFI_SSID) || defined(DUAL_BLE_WIFI) || defined(EXCLUSIVE_BLE_WIFI))
++  // Safely attempt to reconnect every 10 seconds if flagged. For DUAL_BLE_WIFI
++  // and EXCLUSIVE_BLE_WIFI, this is a no-op until WiFi is actually
++  // configured+attempted in setup() (wifi_needs_reconnect only gets set by
++  // the WiFi.onEvent handler registered there, which only runs once
++  // WiFi.begin() was called at all).
+   if (wifi_needs_reconnect && (millis() - last_wifi_reconnect_attempt > 10000)) {
+     WIFI_DEBUG_PRINTLN("Attempting manual WiFi reconnect...");
+     WiFi.disconnect();
+diff --git a/examples/companion_radio/ui-new/UITask.cpp b/examples/companion_radio/ui-new/UITask.cpp
+index 1613c56f..bbcaa1f1 100644
+--- a/examples/companion_radio/ui-new/UITask.cpp
++++ b/examples/companion_radio/ui-new/UITask.cpp
+@@ -2,10 +2,10 @@
+ #include <helpers/TxtDataHelpers.h>
+ #include "../MyMesh.h"
+ #include "target.h"
+-#if defined(WIFI_SSID) || defined(OBSERVER_WIFI_COMPANION) || defined(DUAL_BLE_WIFI)
++#if defined(WIFI_SSID) || defined(OBSERVER_WIFI_COMPANION) || defined(DUAL_BLE_WIFI) || defined(EXCLUSIVE_BLE_WIFI)
+   #include <WiFi.h>
+ #endif
+-#ifdef DUAL_BLE_WIFI
++#if defined(DUAL_BLE_WIFI) || defined(EXCLUSIVE_BLE_WIFI)
+   #include <helpers/esp32/SerialWifiInterface.h>
+   extern MultiSerialInterface interface_manager;
+   extern SerialWifiInterface wifi_interface;
+@@ -100,7 +100,7 @@ class HomeScreen : public UIScreen {
+     RADIO,
+     BLUETOOTH,
+     ADVERT,
+-#ifdef DUAL_BLE_WIFI
++#if defined(DUAL_BLE_WIFI) || defined(EXCLUSIVE_BLE_WIFI)
+     WIFI,
+ #endif
+ #if ENV_INCLUDE_GPS == 1
+@@ -305,13 +305,20 @@ public:
+           32, 32);
+       display.setColor(UIColor::secondary_txt);
+       display.setTextSize(1);
++#ifdef EXCLUSIVE_BLE_WIFI
++      // Here, this button doesn't live-toggle BLE -- it switches transport via
++      // reboot, same as the WIFI page below. Label it accordingly so the
++      // screen going blank for a moment isn't mistaken for a crash.
++      display.drawTextCentered(display.width() / 2, 64 - 11, "switch (reboot): " PRESS_LABEL);
++#else
+       display.drawTextCentered(display.width() / 2, 64 - 11, "toggle: " PRESS_LABEL);
++#endif
+     } else if (_page == HomePage::ADVERT) {
+       display.setColor(UIColor::corp_blue);
+       display.drawXbm((display.width() - 32) / 2, 18, advert_icon, 32, 32);
+       display.setColor(UIColor::secondary_txt);
+       display.drawTextCentered(display.width() / 2, 64 - 11, "advert: " PRESS_LABEL);
+-#ifdef DUAL_BLE_WIFI
++#if defined(DUAL_BLE_WIFI) || defined(EXCLUSIVE_BLE_WIFI)
+     } else if (_page == HomePage::WIFI) {
+       char buf[40];
+       int y = 20;
+@@ -337,8 +344,12 @@ public:
+       display.drawTextCentered(display.width() / 2, y, buf);
+       y += 16;
+       display.setColor(UIColor::secondary_txt);
++#ifdef EXCLUSIVE_BLE_WIFI
++      display.drawTextCentered(display.width() / 2, y, "switch (reboot): " PRESS_LABEL);
++#else
+       display.drawTextCentered(display.width() / 2, y, "toggle: " PRESS_LABEL);
+ #endif
++#endif
+ #if ENV_INCLUDE_GPS == 1
+     } else if (_page == HomePage::GPS) {
+       LocationProvider* nmea = sensors.getLocationProvider();
+@@ -488,6 +499,17 @@ public:
+       }
+       return true;
+     }
++#ifdef EXCLUSIVE_BLE_WIFI
++    if (c == KEY_ENTER && _page == HomePage::BLUETOOTH) {
++      // Same reboot-based switch as the WIFI page (see UITask::toggleWiFi()),
++      // triggered from the other side: BLE is never live-disabled/re-enabled
++      // here, since it was either never started this boot (WiFi mode) or is
++      // already running (BLE mode, nothing to do -- toggleWiFi() only flips
++      // and reboots when actually switching mode).
++      _task->toggleWiFi();
++      return true;
++    }
++#else
+     if (c == KEY_ENTER && _page == HomePage::BLUETOOTH) {
+       if (_task->isBluetoothEnabled()) {  // toggle Bluetooth on/off
+         _task->disableBluetooth();
+@@ -496,6 +518,7 @@ public:
+       }
+       return true;
+     }
++#endif
+     if (c == KEY_ENTER && _page == HomePage::ADVERT) {
+       _task->notify(UIEventType::ack);
+       if (the_mesh.advert()) {
+@@ -505,7 +528,7 @@ public:
+       }
+       return true;
+     }
+-#ifdef DUAL_BLE_WIFI
++#if defined(DUAL_BLE_WIFI) || defined(EXCLUSIVE_BLE_WIFI)
+     if (c == KEY_ENTER && _page == HomePage::WIFI) {
+       _task->toggleWiFi();
+       return true;
+@@ -998,7 +1021,7 @@ void UITask::toggleGPS() {
+   }
+ }
+ 
+-#ifdef DUAL_BLE_WIFI
++#if defined(DUAL_BLE_WIFI) || defined(EXCLUSIVE_BLE_WIFI)
+ bool UITask::isWiFiEnabled() {
+   // NOT WiFi.getMode() != WIFI_OFF -- WiFi.mode(WIFI_STA) is now called
+   // unconditionally at boot (main.cpp setup(), needed to bring up the
+@@ -1007,7 +1030,9 @@ bool UITask::isWiFiEnabled() {
+   // is the real, explicitly-tracked state (see main.cpp).
+   return wifi_active;
+ }
++#endif
+ 
++#ifdef DUAL_BLE_WIFI
+ // Live radio on/off, no reboot needed -- unlike enable()/disable() on
+ // SerialBLEInterface, SerialWifiInterface's own enable()/disable() only
+ // gate the TCP server's frame routing, not the WiFi radio itself (see
+@@ -1057,6 +1082,52 @@ void UITask::toggleWiFi() {
+   }
+   _next_refresh = 0;
+ }
++#elif defined(EXCLUSIVE_BLE_WIFI)
++// Reboot-based switch: BLE and WiFi are never both initialized in the same
++// boot (see main.cpp's EXCLUSIVE_BLE_WIFI setup() block) -- deliberately no
++// live BLEDevice deinit/reinit here (SerialBLEInterface::disable() only stops
++// advertising/the GATT service, it doesn't free the Bluedroid stack's own
++// memory, see helpers/esp32/SerialBLEInterface.cpp -- a live switch would
++// need that to actually help). Flipping wifi_enabled and restarting into the
++// same already-exercised boot path as the single-purpose BLE-only/WiFi-only
++// envs is simpler and safer, at the cost of a few seconds' reboot when
++// changing mode -- an acceptable trade for a board without PSRAM, where
++// running both radios' init at once was measured to starve WiFi's own
++// association of heap (confirmed on real hardware, 30/08/2026).
++void UITask::toggleWiFi() {
++  const char* msg;
++  if (wifi_active) {
++    // Currently in WiFi mode -- switch back to BLE next boot.
++    _node_prefs->wifi_enabled = 0;
++    msg = "Switching to BLE...";
++  } else {
++    // Currently in BLE mode -- switch to WiFi next boot, if configured.
++    if (_node_prefs->wifi_ssid[0] == 0) {
++      showAlert("Set wifi_ssid first", 1200);
++      return;
++    }
++    _node_prefs->wifi_enabled = 1;
++    msg = "Switching to WiFi...";
++  }
++  the_mesh.savePrefs();
++
++  // showAlert() alone wouldn't make it to the screen -- it just sets state
++  // for the next loop() render pass, which ESP.restart() below would never
++  // reach. Draw directly, same pattern as the low-battery shutdown message
++  // above, so the reboot isn't mistaken for a crash.
++  if (_display != NULL) {
++    _display->startFrame();
++    _display->setTextSize(2);
++    _display->setColor(UIColor::warning_txt);
++    _display->drawTextCentered(_display->width() / 2, 28, msg);
++    _display->setTextSize(1);
++    _display->setColor(UIColor::secondary_txt);
++    _display->drawTextCentered(_display->width() / 2, 48, "rebooting...");
++    _display->endFrame();
++    if (_display->isEink() == false) { delay(1500); }
++  }
++  ESP.restart();
++}
+ #endif
+ 
+ void UITask::toggleBuzzer() {
+diff --git a/examples/companion_radio/ui-new/UITask.h b/examples/companion_radio/ui-new/UITask.h
+index d351d188..b7c2f837 100644
+--- a/examples/companion_radio/ui-new/UITask.h
++++ b/examples/companion_radio/ui-new/UITask.h
+@@ -89,7 +89,7 @@ public:
+   void toggleBuzzer();
+   bool getGPSState();
+   void toggleGPS();
+-#ifdef DUAL_BLE_WIFI
++#if defined(DUAL_BLE_WIFI) || defined(EXCLUSIVE_BLE_WIFI)
+   bool isWiFiEnabled();
+   void toggleWiFi();
+ #endif
+diff --git a/variants/heltec_v4/platformio.ini b/variants/heltec_v4/platformio.ini
+index 982bf8df..5276081f 100644
+--- a/variants/heltec_v4/platformio.ini
++++ b/variants/heltec_v4/platformio.ini
+@@ -280,6 +280,45 @@ lib_deps =
+   ${heltec_v4_oled.lib_deps}
+   densaugeo/base64 @ ~1.4.0
+ 
++[env:heltec_v4_companion_radio_ble_wifi_exclusive]
++; Same runtime WiFi configuration as heltec_v4_companion_radio_ble_wifi above
++; (wifi_ssid/wifi_pwd/wifi_enabled via CMD_SET_CUSTOM_VAR, reachable over
++; whichever transport is currently active) -- but BLE and WiFi are never both
++; initialized in the same boot: exactly one is active at a time, chosen by
++; wifi_enabled at startup, switched at runtime via a reboot (WIFI or
++; BLUETOOTH home page, long/short press: see UITask::toggleWiFi()). USB stays
++; always available regardless, independent of this switch. Not needed on
++; this board (heltec_v4_companion_radio_ble_wifi runs both simultaneously
++; without issue, thanks to PSRAM) -- offered as the lower-footprint
++; alternative for whoever prefers it, and as the same mechanism used on
++; boards without PSRAM where running both at once starves WiFi's own
++; association of heap. See EXCLUSIVE_BLE_WIFI in main.cpp.
++extends = heltec_v4_oled
++build_flags =
++  ${heltec_v4_oled.build_flags}
++  -I examples/companion_radio/ui-new
++  -D MAX_CONTACTS=350
++  -D MAX_GROUP_CHANNELS=40
++  -D DISPLAY_CLASS=SSD1306Display
++  -D EXCLUSIVE_BLE_WIFI=1
++  -D BLE_PIN_CODE=123456   ; dynamic, random PIN
++  -D ENABLE_USB_INTERFACE=1   ; companion protocol also over USB serial (shares Serial/115200 with debug logs)
++  -D AUTO_SHUTDOWN_MILLIVOLTS=3400
++  -D BLE_DEBUG_LOGGING=1
++  -D WIFI_DEBUG_LOGGING=1
++  -D OFFLINE_QUEUE_SIZE=256
++;  -D MESH_PACKET_LOGGING=1
++;  -D MESH_DEBUG=1
++build_src_filter = ${heltec_v4_oled.build_src_filter}
++  +<helpers/ui/SSD1306Display.cpp>
++  +<helpers/ui/MomentaryButton.cpp>
++  +<helpers/esp32/*.cpp>
++  +<../examples/companion_radio/*.cpp>
++  +<../examples/companion_radio/ui-new/*.cpp>
++lib_deps =
++  ${heltec_v4_oled.lib_deps}
++  densaugeo/base64 @ ~1.4.0
++
+ [env:heltec_v4_sensor]
+ extends = heltec_v4_oled
+ build_flags =
+-- 
+2.53.0.windows.2
+

@@ -1,0 +1,46 @@
+From c7f5687eccfc668b2639f922a75689ea3faf88ee Mon Sep 17 00:00:00 2001
+From: GNB Build <palimpseste@quidam.eu>
+Date: Sun, 30 Aug 2026 17:10:08 +0200
+Subject: [PATCH 14/17] fix(ui): shrink Switching-to-X/rebooting reboot message
+ to size 1
+
+Same overflow as the WIFI/BLUETOOTH page labels (drawTextCentered doesn't
+word-wrap, see DisplayDriver.h): 'Switching to BLE...'/'Switching to
+WiFi...' at size 2 doesn't fit 128px wide, overflows off both edges and
+collides with 'rebooting...' below it. Confirmed on real hardware (V4.3
+OLED) -- this specific fix had been proposed and mocked up earlier but
+never actually applied, caught only now on a later test pass.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+---
+ examples/companion_radio/ui-new/UITask.cpp | 12 ++++++++----
+ 1 file changed, 8 insertions(+), 4 deletions(-)
+
+diff --git a/examples/companion_radio/ui-new/UITask.cpp b/examples/companion_radio/ui-new/UITask.cpp
+index 14658bd2..12955663 100644
+--- a/examples/companion_radio/ui-new/UITask.cpp
++++ b/examples/companion_radio/ui-new/UITask.cpp
+@@ -1136,12 +1136,16 @@ void UITask::toggleWiFi() {
+   // above, so the reboot isn't mistaken for a crash.
+   if (_display != NULL) {
+     _display->startFrame();
+-    _display->setTextSize(2);
+-    _display->setColor(UIColor::warning_txt);
+-    _display->drawTextCentered(_display->width() / 2, 28, msg);
++    // Size 1, not 2: "Switching to BLE..."/"Switching to WiFi..." at size 2
++    // doesn't fit a 128px-wide screen (drawTextCentered doesn't word-wrap,
++    // see DisplayDriver.h -- it just centers on the computed width, so an
++    // oversized string overflows off both edges and visually collides with
++    // the line below). Confirmed on real hardware (V4.3 OLED, 30/08/2026).
+     _display->setTextSize(1);
++    _display->setColor(UIColor::warning_txt);
++    _display->drawTextCentered(_display->width() / 2, 24, msg);
+     _display->setColor(UIColor::secondary_txt);
+-    _display->drawTextCentered(_display->width() / 2, 48, "rebooting...");
++    _display->drawTextCentered(_display->width() / 2, 40, "rebooting...");
+     _display->endFrame();
+     if (_display->isEink() == false) { delay(1500); }
+   }
+-- 
+2.53.0.windows.2
+

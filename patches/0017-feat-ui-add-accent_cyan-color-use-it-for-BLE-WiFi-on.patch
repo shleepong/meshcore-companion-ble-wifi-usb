@@ -1,0 +1,212 @@
+From f8d6fddf4ad9616224b44cf2d581dcd4aff38137 Mon Sep 17 00:00:00 2001
+From: GNB Build <palimpseste@quidam.eu>
+Date: Sun, 30 Aug 2026 19:18:01 +0200
+Subject: [PATCH 17/17] feat(ui): add accent_cyan color, use it for BLE/WiFi
+ on-state text
+
+corp_blue is shared with the title bar, ADVERT icon, and the non-exclusive
+Bluetooth icon page, so it can't be recolored for just the BLE/WiFi status
+text without a global re-theme. Added a dedicated UIColor::accent_cyan
+instead, defined per display driver mirroring corp_blue's pattern: a real
+bright cyan on the color-capable TFT drivers (ST7735 [WT2], ST7789LCD,
+NV3001B, LGFX), identical to the existing corp_blue value everywhere else
+(monochrome OLED / e-ink), so nothing changes visually on those boards.
+
+Applied to the EXCLUSIVE_BLE_WIFI on-state text on the BLUETOOTH and WIFI
+home pages only (the requested scope): corp_blue's current dark navy
+(0x001A) read as too dark on the WT2's screen when the active protocol
+is shown 'on'. Off-state (secondary_txt, gray) untouched. The legacy
+DUAL_BLE_WIFI WiFi page keeps corp_blue, out of scope for this request.
+---
+ examples/companion_radio/ui-new/UITask.cpp | 4 ++--
+ src/helpers/ui/DisplayDriver.h             | 2 +-
+ src/helpers/ui/E213Display.cpp             | 1 +
+ src/helpers/ui/E290Display.cpp             | 1 +
+ src/helpers/ui/GxEPDDisplay.cpp            | 1 +
+ src/helpers/ui/LGFXDisplay.cpp             | 1 +
+ src/helpers/ui/NV3001BDisplay.cpp          | 1 +
+ src/helpers/ui/NullDisplayDriver.cpp       | 1 +
+ src/helpers/ui/SH1106Display.cpp           | 1 +
+ src/helpers/ui/SSD1306Display.cpp          | 1 +
+ src/helpers/ui/ST7735Display.cpp           | 1 +
+ src/helpers/ui/ST7789Display.cpp           | 1 +
+ src/helpers/ui/ST7789LCDDisplay.cpp        | 1 +
+ src/helpers/ui/U8g2Display.cpp             | 1 +
+ 14 files changed, 15 insertions(+), 3 deletions(-)
+
+diff --git a/examples/companion_radio/ui-new/UITask.cpp b/examples/companion_radio/ui-new/UITask.cpp
+index 69fb2efb..869c845d 100644
+--- a/examples/companion_radio/ui-new/UITask.cpp
++++ b/examples/companion_radio/ui-new/UITask.cpp
+@@ -309,7 +309,7 @@ public:
+       // fit on one 128px-wide line next to a 32x32 icon. Text-status style
+       // instead, same layout as the WIFI page.
+       display.setTextSize(1);
+-      display.setColor(ble_on ? UIColor::corp_blue : UIColor::secondary_txt);
++      display.setColor(ble_on ? UIColor::accent_cyan : UIColor::secondary_txt);
+       display.drawTextCentered(display.width() / 2, 24, ble_on ? "BLE: on" : "BLE: off");
+       display.setColor(UIColor::secondary_txt);
+       display.drawTextCentered(display.width() / 2, 44, "switch (reboot):");
+@@ -350,7 +350,7 @@ public:
+       // label needs to say "reboot" explicitly, and "switch (reboot): long
+       // press" doesn't fit on one 128px-wide line.
+       display.setTextSize(1);
+-      display.setColor(wifi_on ? UIColor::corp_blue : UIColor::secondary_txt);
++      display.setColor(wifi_on ? UIColor::accent_cyan : UIColor::secondary_txt);
+       display.drawTextCentered(display.width() / 2, 20, wifi_on ? "WiFi: on" : "WiFi: off");
+       display.setColor(UIColor::primary_txt);
+       display.drawTextCentered(display.width() / 2, 34, buf);
+diff --git a/src/helpers/ui/DisplayDriver.h b/src/helpers/ui/DisplayDriver.h
+index b76a1b6c..2ad56159 100644
+--- a/src/helpers/ui/DisplayDriver.h
++++ b/src/helpers/ui/DisplayDriver.h
+@@ -8,7 +8,7 @@ using ColorVal = uint16_t;
+ class UIColor {
+ public:
+   // color definitions (by element _type_)
+-  static ColorVal window_bkg, title_bkg, title_txt, primary_txt, secondary_txt, warning_txt, popup_bkg, popup_txt, corp_blue;
++  static ColorVal window_bkg, title_bkg, title_txt, primary_txt, secondary_txt, warning_txt, popup_bkg, popup_txt, corp_blue, accent_cyan;
+ };
+ 
+ class DisplayDriver {
+diff --git a/src/helpers/ui/E213Display.cpp b/src/helpers/ui/E213Display.cpp
+index daf26989..9ae11dd0 100644
+--- a/src/helpers/ui/E213Display.cpp
++++ b/src/helpers/ui/E213Display.cpp
+@@ -12,6 +12,7 @@ ColorVal UIColor::warning_txt = BLACK;
+ ColorVal UIColor::popup_bkg = WHITE;
+ ColorVal UIColor::popup_txt = BLACK;
+ ColorVal UIColor::corp_blue = BLACK;
++ColorVal UIColor::accent_cyan = BLACK;
+ 
+ BaseDisplay* E213Display::detectEInk()
+ {
+diff --git a/src/helpers/ui/E290Display.cpp b/src/helpers/ui/E290Display.cpp
+index 34bbcdbc..26551e81 100644
+--- a/src/helpers/ui/E290Display.cpp
++++ b/src/helpers/ui/E290Display.cpp
+@@ -12,6 +12,7 @@ ColorVal UIColor::warning_txt = BLACK;
+ ColorVal UIColor::popup_bkg = WHITE;
+ ColorVal UIColor::popup_txt = BLACK;
+ ColorVal UIColor::corp_blue = BLACK;
++ColorVal UIColor::accent_cyan = BLACK;
+ 
+ bool E290Display::begin() {
+   if (_init) return true;
+diff --git a/src/helpers/ui/GxEPDDisplay.cpp b/src/helpers/ui/GxEPDDisplay.cpp
+index 13dafa34..22a13398 100644
+--- a/src/helpers/ui/GxEPDDisplay.cpp
++++ b/src/helpers/ui/GxEPDDisplay.cpp
+@@ -24,6 +24,7 @@ ColorVal UIColor::warning_txt = GxEPD_BLACK;
+ ColorVal UIColor::popup_bkg = GxEPD_WHITE;
+ ColorVal UIColor::popup_txt = GxEPD_BLACK;
+ ColorVal UIColor::corp_blue = GxEPD_BLACK;
++ColorVal UIColor::accent_cyan = GxEPD_BLACK;
+ 
+ 
+ bool GxEPDDisplay::begin() {
+diff --git a/src/helpers/ui/LGFXDisplay.cpp b/src/helpers/ui/LGFXDisplay.cpp
+index 7bdd52a2..b2331d25 100644
+--- a/src/helpers/ui/LGFXDisplay.cpp
++++ b/src/helpers/ui/LGFXDisplay.cpp
+@@ -10,6 +10,7 @@ ColorVal UIColor::warning_txt = 0xFD20;
+ ColorVal UIColor::popup_bkg =  0x07FF;  // CYAN
+ ColorVal UIColor::popup_txt = 0x0000;
+ ColorVal UIColor::corp_blue = 0x001A;
++ColorVal UIColor::accent_cyan = 0x07FF;  // CYAN
+ 
+ bool LGFXDisplay::begin() {
+   turnOn();
+diff --git a/src/helpers/ui/NV3001BDisplay.cpp b/src/helpers/ui/NV3001BDisplay.cpp
+index 1ff7765c..e9f6deac 100644
+--- a/src/helpers/ui/NV3001BDisplay.cpp
++++ b/src/helpers/ui/NV3001BDisplay.cpp
+@@ -106,6 +106,7 @@ ColorVal UIColor::warning_txt = 0xFD20;
+ ColorVal UIColor::popup_bkg =  0x07FF;  // CYAN
+ ColorVal UIColor::popup_txt = 0x0000;
+ ColorVal UIColor::corp_blue = 0x001A;
++ColorVal UIColor::accent_cyan = 0x07FF;  // CYAN
+ 
+ static int scaleX(int x) {
+   return (int)(x * DISPLAY_SCALE_X);
+diff --git a/src/helpers/ui/NullDisplayDriver.cpp b/src/helpers/ui/NullDisplayDriver.cpp
+index 1500f5c1..609b0938 100644
+--- a/src/helpers/ui/NullDisplayDriver.cpp
++++ b/src/helpers/ui/NullDisplayDriver.cpp
+@@ -9,3 +9,4 @@ ColorVal UIColor::warning_txt = 0;
+ ColorVal UIColor::popup_bkg = 0;
+ ColorVal UIColor::popup_txt = 0;
+ ColorVal UIColor::corp_blue = 0;
++ColorVal UIColor::accent_cyan = 0;
+diff --git a/src/helpers/ui/SH1106Display.cpp b/src/helpers/ui/SH1106Display.cpp
+index 8b91d857..95b41c59 100644
+--- a/src/helpers/ui/SH1106Display.cpp
++++ b/src/helpers/ui/SH1106Display.cpp
+@@ -19,6 +19,7 @@ ColorVal UIColor::warning_txt = SH110X_WHITE;
+ ColorVal UIColor::popup_bkg = SH110X_BLACK;
+ ColorVal UIColor::popup_txt = SH110X_WHITE;
+ ColorVal UIColor::corp_blue = SH110X_WHITE;
++ColorVal UIColor::accent_cyan = SH110X_WHITE;
+ 
+ bool SH1106Display::begin()
+ {
+diff --git a/src/helpers/ui/SSD1306Display.cpp b/src/helpers/ui/SSD1306Display.cpp
+index ab2d77fb..47792741 100644
+--- a/src/helpers/ui/SSD1306Display.cpp
++++ b/src/helpers/ui/SSD1306Display.cpp
+@@ -16,6 +16,7 @@ ColorVal UIColor::warning_txt = SSD1306_WHITE;
+ ColorVal UIColor::popup_bkg = SSD1306_BLACK;
+ ColorVal UIColor::popup_txt = SSD1306_WHITE;
+ ColorVal UIColor::corp_blue = SSD1306_WHITE;
++ColorVal UIColor::accent_cyan = SSD1306_WHITE;
+ 
+ bool SSD1306Display::begin() {
+   if (!_isOn) {
+diff --git a/src/helpers/ui/ST7735Display.cpp b/src/helpers/ui/ST7735Display.cpp
+index 7e0c5d73..10cfb298 100644
+--- a/src/helpers/ui/ST7735Display.cpp
++++ b/src/helpers/ui/ST7735Display.cpp
+@@ -433,6 +433,7 @@ ColorVal UIColor::warning_txt = ST77XX_ORANGE;
+ ColorVal UIColor::popup_bkg = ST77XX_CYAN;
+ ColorVal UIColor::popup_txt = ST77XX_BLACK;
+ ColorVal UIColor::corp_blue = 0x001A;
++ColorVal UIColor::accent_cyan = ST77XX_CYAN;
+ 
+ bool ST7735Display::begin() {
+   if (!sprite) {
+diff --git a/src/helpers/ui/ST7789Display.cpp b/src/helpers/ui/ST7789Display.cpp
+index 7d039a13..3da7d71d 100644
+--- a/src/helpers/ui/ST7789Display.cpp
++++ b/src/helpers/ui/ST7789Display.cpp
+@@ -36,6 +36,7 @@ ColorVal UIColor::warning_txt = OLEDDISPLAY_COLOR::WHITE;
+ ColorVal UIColor::popup_bkg = OLEDDISPLAY_COLOR::BLACK;
+ ColorVal UIColor::popup_txt = OLEDDISPLAY_COLOR::WHITE;
+ ColorVal UIColor::corp_blue = OLEDDISPLAY_COLOR::WHITE;
++ColorVal UIColor::accent_cyan = OLEDDISPLAY_COLOR::WHITE;
+ 
+ bool ST7789Display::begin() {
+   if(!_isOn) {
+diff --git a/src/helpers/ui/ST7789LCDDisplay.cpp b/src/helpers/ui/ST7789LCDDisplay.cpp
+index a9f30dd5..0f540544 100644
+--- a/src/helpers/ui/ST7789LCDDisplay.cpp
++++ b/src/helpers/ui/ST7789LCDDisplay.cpp
+@@ -33,6 +33,7 @@ ColorVal UIColor::warning_txt = ST77XX_ORANGE;
+ ColorVal UIColor::popup_bkg = ST77XX_CYAN;
+ ColorVal UIColor::popup_txt = ST77XX_BLACK;
+ ColorVal UIColor::corp_blue = 0x001A;
++ColorVal UIColor::accent_cyan = ST77XX_CYAN;
+ 
+ bool ST7789LCDDisplay::begin() {
+   if (!_isOn) {
+diff --git a/src/helpers/ui/U8g2Display.cpp b/src/helpers/ui/U8g2Display.cpp
+index e8d7fe2f..21f80d95 100644
+--- a/src/helpers/ui/U8g2Display.cpp
++++ b/src/helpers/ui/U8g2Display.cpp
+@@ -10,3 +10,4 @@ ColorVal UIColor::warning_txt = 1;
+ ColorVal UIColor::popup_bkg = 0;
+ ColorVal UIColor::popup_txt = 1;
+ ColorVal UIColor::corp_blue = 1;
++ColorVal UIColor::accent_cyan = 1;
+-- 
+2.53.0.windows.2
+

@@ -1,0 +1,128 @@
+From f794e30dfc3eefa3a6ec80b9798cdf29e8e2f89f Mon Sep 17 00:00:00 2001
+From: GNB Build <palimpseste@quidam.eu>
+Date: Sun, 30 Aug 2026 16:47:59 +0200
+Subject: [PATCH 12/17] fix(ui): fit full switch label on WIFI/BLUETOOTH pages
+ (EXCLUSIVE_BLE_WIFI)
+
+'switch (reboot): long press' (28 chars) doesn't fit on one 128px-wide OLED
+line at text size 1 (~21 chars/line) -- split across two lines instead of
+shortening it, on both pages where EXCLUSIVE_BLE_WIFI needs it:
+
+- WIFI page: 'WiFi: on/off' sized down from 2 to 1 to free the vertical room
+  the two-line label needs, without touching the DUAL_BLE_WIFI branch at all.
+- BLUETOOTH page: the 32x32 icon left only 14px below it, not enough for two
+  lines -- replaced with a 'BLE: on/off' text status line instead (same style
+  as the WIFI page), scoped to EXCLUSIVE_BLE_WIFI only. DUAL_BLE_WIFI and
+  plain BLE-only builds keep the icon, unaffected.
+
+Also reordered HomePage so WIFI sits right after BLUETOOTH (was after
+ADVERT), per request -- pure navigation-order change, nothing else keys off
+the enum's numeric values.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+---
+ examples/companion_radio/ui-new/UITask.cpp | 55 +++++++++++++++-------
+ 1 file changed, 37 insertions(+), 18 deletions(-)
+
+diff --git a/examples/companion_radio/ui-new/UITask.cpp b/examples/companion_radio/ui-new/UITask.cpp
+index eed9a0c9..14658bd2 100644
+--- a/examples/companion_radio/ui-new/UITask.cpp
++++ b/examples/companion_radio/ui-new/UITask.cpp
+@@ -99,10 +99,10 @@ class HomeScreen : public UIScreen {
+     RECENT,
+     RADIO,
+     BLUETOOTH,
+-    ADVERT,
+ #if defined(DUAL_BLE_WIFI) || defined(EXCLUSIVE_BLE_WIFI)
+     WIFI,
+ #endif
++    ADVERT,
+ #if ENV_INCLUDE_GPS == 1
+     GPS,
+ #endif
+@@ -299,18 +299,26 @@ public:
+       sprintf(tmp, "Noise floor: %d", radio_driver.getNoiseFloor());
+       display.print(tmp);
+     } else if (_page == HomePage::BLUETOOTH) {
++      bool ble_on = _task->isBluetoothEnabled();
++#ifdef EXCLUSIVE_BLE_WIFI
++      // No icon here: this mode's label needs to say "reboot" explicitly
++      // (this button switches transport via reboot, same as the WIFI page
++      // below, not a live toggle) and "switch (reboot): long press" doesn't
++      // fit on one 128px-wide line next to a 32x32 icon. Text-status style
++      // instead, same layout as the WIFI page.
++      display.setTextSize(1);
++      display.setColor(ble_on ? UIColor::corp_blue : UIColor::secondary_txt);
++      display.drawTextCentered(display.width() / 2, 24, ble_on ? "BLE: on" : "BLE: off");
++      display.setColor(UIColor::secondary_txt);
++      display.drawTextCentered(display.width() / 2, 44, "switch (reboot):");
++      display.drawTextCentered(display.width() / 2, 54, PRESS_LABEL);
++#else
+       display.setColor(UIColor::corp_blue);
+       display.drawXbm((display.width() - 32) / 2, 18,
+-          _task->isBluetoothEnabled() ? bluetooth_on : bluetooth_off,
++          ble_on ? bluetooth_on : bluetooth_off,
+           32, 32);
+       display.setColor(UIColor::secondary_txt);
+       display.setTextSize(1);
+-#ifdef EXCLUSIVE_BLE_WIFI
+-      // Here, this button doesn't live-toggle BLE -- it switches transport via
+-      // reboot, same as the WIFI page below. Label it accordingly so the
+-      // screen going blank for a moment isn't mistaken for a crash.
+-      display.drawTextCentered(display.width() / 2, 64 - 11, "reboot: " PRESS_LABEL);
+-#else
+       display.drawTextCentered(display.width() / 2, 64 - 11, "toggle: " PRESS_LABEL);
+ #endif
+     } else if (_page == HomePage::ADVERT) {
+@@ -321,14 +329,7 @@ public:
+ #if defined(DUAL_BLE_WIFI) || defined(EXCLUSIVE_BLE_WIFI)
+     } else if (_page == HomePage::WIFI) {
+       char buf[40];
+-      int y = 20;
+       bool wifi_on = _task->isWiFiEnabled();
+-      display.setTextSize(2);
+-      display.setColor(wifi_on ? UIColor::corp_blue : UIColor::secondary_txt);
+-      display.drawTextCentered(display.width() / 2, y, wifi_on ? "WiFi: on" : "WiFi: off");
+-      y += 20;
+-      display.setTextSize(1);
+-      display.setColor(UIColor::primary_txt);
+       if (wifi_on) {
+         if (WiFi.status() == WL_CONNECTED) {
+           IPAddress ip = WiFi.localIP();
+@@ -341,12 +342,30 @@ public:
+       } else {
+         strcpy(buf, _node_prefs->wifi_ssid[0] ? _node_prefs->wifi_ssid : "no SSID configured");
+       }
++#ifdef EXCLUSIVE_BLE_WIFI
++      // "WiFi: on/off" sized down from the DUAL_BLE_WIFI original (size 2) to
++      // leave room for two full lines of the switch label below: this mode's
++      // label needs to say "reboot" explicitly, and "switch (reboot): long
++      // press" doesn't fit on one 128px-wide line.
++      display.setTextSize(1);
++      display.setColor(wifi_on ? UIColor::corp_blue : UIColor::secondary_txt);
++      display.drawTextCentered(display.width() / 2, 20, wifi_on ? "WiFi: on" : "WiFi: off");
++      display.setColor(UIColor::primary_txt);
++      display.drawTextCentered(display.width() / 2, 34, buf);
++      display.setColor(UIColor::secondary_txt);
++      display.drawTextCentered(display.width() / 2, 46, "switch (reboot):");
++      display.drawTextCentered(display.width() / 2, 56, PRESS_LABEL);
++#else
++      int y = 20;
++      display.setTextSize(2);
++      display.setColor(wifi_on ? UIColor::corp_blue : UIColor::secondary_txt);
++      display.drawTextCentered(display.width() / 2, y, wifi_on ? "WiFi: on" : "WiFi: off");
++      y += 20;
++      display.setTextSize(1);
++      display.setColor(UIColor::primary_txt);
+       display.drawTextCentered(display.width() / 2, y, buf);
+       y += 16;
+       display.setColor(UIColor::secondary_txt);
+-#ifdef EXCLUSIVE_BLE_WIFI
+-      display.drawTextCentered(display.width() / 2, y, "reboot: " PRESS_LABEL);
+-#else
+       display.drawTextCentered(display.width() / 2, y, "toggle: " PRESS_LABEL);
+ #endif
+ #endif
+-- 
+2.53.0.windows.2
+

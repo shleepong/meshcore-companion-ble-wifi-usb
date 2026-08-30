@@ -1,0 +1,67 @@
+From 3508a57b3ef1ee803311f52a4d56865083006875 Mon Sep 17 00:00:00 2001
+From: GNB Build <palimpseste@quidam.eu>
+Date: Sun, 30 Aug 2026 18:58:00 +0200
+Subject: [PATCH 16/17] fix(exclusive): defer WiFi.mode() to the WiFi branch
+ only
+
+Calling WiFi.mode(WIFI_STA)/setAutoReconnect()/onEvent() unconditionally
+before the wifi_enabled check meant the WiFi radio was brought up even
+when falling back to BLE. Confirmed on real WT2 hardware (30/08/2026,
+[DIAG] serial checkpoints) that this hangs bluetooth_interface.begin()
+indefinitely on this board, causing an infinite boot loop stuck on
+'Loading...'. The V4.3 tolerates the same ordering fine, which is why
+this wasn't caught until the WT2 port was actually tested.
+
+Fix: move WiFi.mode()/setAutoReconnect()/onEvent() inside the
+wifi_enabled branch, so the BLE fallback path never touches the WiFi
+radio at all.
+---
+ examples/companion_radio/main.cpp | 28 +++++++++++++++++-----------
+ 1 file changed, 17 insertions(+), 11 deletions(-)
+
+diff --git a/examples/companion_radio/main.cpp b/examples/companion_radio/main.cpp
+index 66b4e13c..eb5c4436 100644
+--- a/examples/companion_radio/main.cpp
++++ b/examples/companion_radio/main.cpp
+@@ -282,21 +282,27 @@ void setup() {
+   // complete (confirmed on real hardware, 30/08/2026: ~33KB free heap right
+   // before WiFi.begin() with BLE already up, and WiFi never resolves to
+   // connected OR disconnected -- it just silently never gets there).
+-  WiFi.mode(WIFI_STA);
+-  WiFi.setAutoReconnect(true);
+-  WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info){
+-      if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
+-          WIFI_DEBUG_PRINTLN("WiFi disconnected. Flagging for reconnect...");
+-          wifi_needs_reconnect = true;
+-      } else if (event == ARDUINO_EVENT_WIFI_STA_GOT_IP) {
+-          WIFI_DEBUG_PRINTLN("WiFi connected successfully!");
+-          wifi_needs_reconnect = false;
+-      }
+-  });
+   {
+     NodePrefs* np = the_mesh.getNodePrefs();
+     if (np->wifi_enabled && np->wifi_ssid[0] != '\0') {
+       // WiFi mode this boot: no BLE at all (see the skipped block above).
++      // WiFi.mode()/setAutoReconnect()/onEvent() only run here, never
++      // unconditionally before this branch: on the WT2, bringing up the WiFi
++      // radio (even just WiFi.mode(WIFI_STA)) before BLEDevice::init() hangs
++      // bluetooth_interface.begin() indefinitely, confirmed on real hardware
++      // 30/08/2026 via [DIAG] serial checkpoints (the V4.3 tolerates it fine,
++      // its BLE init doesn't care whether the WiFi radio was touched first).
++      WiFi.mode(WIFI_STA);
++      WiFi.setAutoReconnect(true);
++      WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info){
++          if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
++              WIFI_DEBUG_PRINTLN("WiFi disconnected. Flagging for reconnect...");
++              wifi_needs_reconnect = true;
++          } else if (event == ARDUINO_EVENT_WIFI_STA_GOT_IP) {
++              WIFI_DEBUG_PRINTLN("WiFi connected successfully!");
++              wifi_needs_reconnect = false;
++          }
++      });
+       WIFI_DEBUG_PRINTLN("wifi_enabled is set, attempting to join '%s'...", np->wifi_ssid);
+       board.setInhibitSleep(true);   // prevent sleep while WiFi is active
+       wifi_interface.begin(TCP_PORT);
+-- 
+2.53.0.windows.2
+

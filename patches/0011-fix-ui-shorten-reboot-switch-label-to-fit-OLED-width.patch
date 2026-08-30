@@ -1,0 +1,43 @@
+From b1ec8f0ba3dcff5821a06e3f94dd099e201d9696 Mon Sep 17 00:00:00 2001
+From: GNB Build <palimpseste@quidam.eu>
+Date: Sun, 30 Aug 2026 16:06:05 +0200
+Subject: [PATCH 11/17] fix(ui): shorten reboot-switch label to fit OLED width
+ (SSD1306)
+
+'switch (reboot): ' + PRESS_LABEL (28 chars on V4.3, 'long press') overflowed the
+128px SSD1306's ~21-char line width, truncating to 'switch (reboot): long' with
+' press' cut off -- confirmed on real hardware, both the BLUETOOTH and WIFI home
+pages (same label, EXCLUSIVE_BLE_WIFI only). Shortened to 'reboot: ' + PRESS_LABEL,
+same length as the original 'toggle: ' it replaces, so it fits everywhere the
+original did.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+---
+ examples/companion_radio/ui-new/UITask.cpp | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/examples/companion_radio/ui-new/UITask.cpp b/examples/companion_radio/ui-new/UITask.cpp
+index bbcaa1f1..eed9a0c9 100644
+--- a/examples/companion_radio/ui-new/UITask.cpp
++++ b/examples/companion_radio/ui-new/UITask.cpp
+@@ -309,7 +309,7 @@ public:
+       // Here, this button doesn't live-toggle BLE -- it switches transport via
+       // reboot, same as the WIFI page below. Label it accordingly so the
+       // screen going blank for a moment isn't mistaken for a crash.
+-      display.drawTextCentered(display.width() / 2, 64 - 11, "switch (reboot): " PRESS_LABEL);
++      display.drawTextCentered(display.width() / 2, 64 - 11, "reboot: " PRESS_LABEL);
+ #else
+       display.drawTextCentered(display.width() / 2, 64 - 11, "toggle: " PRESS_LABEL);
+ #endif
+@@ -345,7 +345,7 @@ public:
+       y += 16;
+       display.setColor(UIColor::secondary_txt);
+ #ifdef EXCLUSIVE_BLE_WIFI
+-      display.drawTextCentered(display.width() / 2, y, "switch (reboot): " PRESS_LABEL);
++      display.drawTextCentered(display.width() / 2, y, "reboot: " PRESS_LABEL);
+ #else
+       display.drawTextCentered(display.width() / 2, y, "toggle: " PRESS_LABEL);
+ #endif
+-- 
+2.53.0.windows.2
+

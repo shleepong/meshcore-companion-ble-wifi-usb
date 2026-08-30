@@ -1,0 +1,81 @@
+From 54bde82295971b5fc4b41ed71324c89d572b3c39 Mon Sep 17 00:00:00 2001
+From: GNB Build <palimpseste@quidam.eu>
+Date: Sun, 30 Aug 2026 17:00:32 +0200
+Subject: [PATCH 13/17] feat(companion): add EXCLUSIVE_BLE_WIFI env for Tracker
+ V2
+
+New env heltec_tracker_v2_companion_radio_ble_wifi_exclusive, mirroring the
+V4.3 one added earlier (commit 2782fce1): same EXCLUSIVE_BLE_WIFI mechanism,
+BLE and WiFi never initialized together, reboot-based switch. This is the
+board the mode was actually designed for (no PSRAM, memory pressure when BLE
+and WiFi run together confirmed on real hardware, see
+reference_wt2_wifi_ble_coexistence_memory_bug in project memory) -- validated
+first on the V4.3 (which didn't strictly need it) before porting here.
+
+First pass deliberately without any of the OLED-specific label/layout
+adjustments made for the V4.3's SSD1306 (icon removed on the BLUETOOTH page,
+two-line switch label) -- this board's ST7735 color screen has different
+dimensions, so the shared UITask.cpp code renders as-is here to see the
+actual result before deciding whether the same adjustments are needed on
+this screen too.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+---
+ variants/heltec_tracker_v2/platformio.ini | 41 +++++++++++++++++++++++
+ 1 file changed, 41 insertions(+)
+
+diff --git a/variants/heltec_tracker_v2/platformio.ini b/variants/heltec_tracker_v2/platformio.ini
+index b56111db..76231ecf 100644
+--- a/variants/heltec_tracker_v2/platformio.ini
++++ b/variants/heltec_tracker_v2/platformio.ini
+@@ -234,6 +234,47 @@ lib_deps =
+   ${Heltec_tracker_v2.lib_deps}
+   densaugeo/base64 @ ~1.4.0
+ 
++[env:heltec_tracker_v2_companion_radio_ble_wifi_exclusive]
++; Same runtime WiFi configuration as heltec_tracker_v2_companion_radio_ble_wifi
++; above (wifi_ssid/wifi_pwd/wifi_enabled via CMD_SET_CUSTOM_VAR, reachable over
++; whichever transport is currently active) -- but BLE and WiFi are never both
++; initialized in the same boot: exactly one is active at a time, chosen by
++; wifi_enabled at startup, switched at runtime via a reboot (WIFI or
++; BLUETOOTH home page, press to switch). USB stays always available
++; regardless, independent of this switch. See EXCLUSIVE_BLE_WIFI in main.cpp.
++;
++; Unlike the V4.3 (which has PSRAM and runs fine in DUAL_BLE_WIFI), this board
++; has none: running BLE and WiFi's own initialization together was measured
++; to leave WiFi's association without enough free heap to ever resolve
++; (~33KB free right before WiFi.begin(), with BLE already up -- no connect,
++; no disconnect event, just silence). This mode exists specifically to work
++; around that.
++extends = Heltec_tracker_v2
++build_flags =
++  ${Heltec_tracker_v2.build_flags}
++  -I examples/companion_radio/ui-new
++  -D MAX_CONTACTS=350
++  -D MAX_GROUP_CHANNELS=40
++  -D DISPLAY_CLASS=ST7735Display
++  -D EXCLUSIVE_BLE_WIFI=1
++  -D BLE_PIN_CODE=123456   ; dynamic, random PIN
++  -D ENABLE_USB_INTERFACE=1   ; companion protocol also over USB serial (shares Serial/115200 with debug logs)
++  -D AUTO_SHUTDOWN_MILLIVOLTS=3400
++  -D BLE_DEBUG_LOGGING=1
++  -D WIFI_DEBUG_LOGGING=1
++  -D OFFLINE_QUEUE_SIZE=256
++;  -D MESH_PACKET_LOGGING=1
++;  -D MESH_DEBUG=1
++build_src_filter = ${Heltec_tracker_v2.build_src_filter}
++  +<helpers/ui/ST7735Display.cpp>
++  +<helpers/ui/MomentaryButton.cpp>
++  +<helpers/esp32/*.cpp>
++  +<../examples/companion_radio/*.cpp>
++  +<../examples/companion_radio/ui-new/*.cpp>
++lib_deps =
++  ${Heltec_tracker_v2.lib_deps}
++  densaugeo/base64 @ ~1.4.0
++
+ [env:heltec_tracker_v2_sensor]
+ extends = Heltec_tracker_v2
+ build_flags =
+-- 
+2.53.0.windows.2
+

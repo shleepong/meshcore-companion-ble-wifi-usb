@@ -1,0 +1,49 @@
+From 7b708d6d7d32b74c406562e46b018f63f012aca9 Mon Sep 17 00:00:00 2001
+From: GNB Build <palimpseste@quidam.eu>
+Date: Sun, 30 Aug 2026 10:22:38 +0200
+Subject: [PATCH 09/17] fix(companion): ArduinoSerialInterface.isConnected()
+ reflects real USB session on ESP32-S3/C3
+
+MultiSerialInterface::isConnected() returns true as soon as any registered
+interface reports connected. ArduinoSerialInterface (USB/UART companion
+transport) unconditionally returned true ("no way of knowing"), which was
+correct for plain UART boards but wrong on ESP32-S3/C3 native USB CDC boards
+(Tracker V2, V4.3): as soon as ENABLE_USB_INTERFACE was set, the aggregated
+isConnected() was permanently true, hiding the BLE pairing PIN on the home
+page (UITask.cpp) behind a permanent "< Connected >", even with zero active
+BLE or USB client.
+
+Both HWCDC (V4.3, ARDUINO_USB_MODE=1) and USBCDC (Tracker V2,
+ARDUINO_USB_MODE=0) already track a real host session internally (DTR/RTS or
+RX activity) and expose it via operator bool(), so (bool)Serial now gates the
+result under ARDUINO_USB_CDC_ON_BOOT, falling back to the previous behavior
+on plain-UART boards (RAK4631, etc.) where no such signal exists.
+---
+ src/helpers/ArduinoSerialInterface.cpp | 11 +++++++++--
+ 1 file changed, 9 insertions(+), 2 deletions(-)
+
+diff --git a/src/helpers/ArduinoSerialInterface.cpp b/src/helpers/ArduinoSerialInterface.cpp
+index a01fa586..02dfc48e 100644
+--- a/src/helpers/ArduinoSerialInterface.cpp
++++ b/src/helpers/ArduinoSerialInterface.cpp
+@@ -13,8 +13,15 @@ void ArduinoSerialInterface::disable() {
+   _isEnabled = false;
+ }
+ 
+-bool ArduinoSerialInterface::isConnected() const { 
+-  return true;   // no way of knowing, so assume yes
++bool ArduinoSerialInterface::isConnected() const {
++#if defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
++  return (bool)Serial;   // native USB CDC (ESP32-S3/C3, HWCDC or USBCDC depending on
++                          // ARDUINO_USB_MODE): reflects a real host session (DTR/RTS or
++                          // RX activity depending on the underlying class), not just the
++                          // cable being plugged in
++#else
++  return true;   // plain UART: no way of knowing, so assume yes
++#endif
+ }
+ 
+ bool ArduinoSerialInterface::isWriteBusy() const {
+-- 
+2.53.0.windows.2
+
