@@ -97,6 +97,9 @@ MIT, héritée de [meshcore-dev/MeshCore](https://github.com/meshcore-dev/MeshCo
 (voir `LICENSE`). Ce dépôt ne fait qu'ajouter des patchs et des binaires précompilés
 par-dessus le code officiel.
 
+*(Pour info : ce dépôt est développé avec Claude Code (Anthropic), en s'appuyant sur
+le dépôt officiel MeshCore et le travail qui y est fait.)*
+
 **Workaround, not an official project.** This repository exists because no
 multi-transport companion firmware is offered upstream yet. The native support
 already present on the official side (`MultiSerialInterface`) clearly points in this
@@ -177,3 +180,6 @@ fixable from this firmware. Only affects the display, not actual operation.
 MIT, inherited from [meshcore-dev/MeshCore](https://github.com/meshcore-dev/MeshCore)
 (see `LICENSE`). This repository only adds patches and precompiled binaries on top
 of the official code.
+
+*(FYI this repository is developed with Claude Code (Anthropic), relying on the
+official MeshCore repository and the work done there.)*
