@@ -83,13 +83,23 @@
   /* ---------- header ---------- */
   .masthead {
     display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 16px;
-    flex-wrap: wrap;
+    flex-direction: column;
     padding-bottom: 18px;
     border-bottom: 2px solid var(--border);
     margin-bottom: 24px;
+  }
+  .masthead-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .masthead-title-group {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
   }
   .masthead h1 {
     font-family: var(--font-display);
@@ -103,9 +113,27 @@
   .masthead .tagline {
     font-size: 0.92rem;
     color: var(--text-muted);
-    margin-top: 6px;
-    max-width: 46ch;
+    margin-top: 10px;
   }
+  .lang-toggle {
+    display: inline-flex;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  .lang-toggle button {
+    border: none;
+    border-radius: 0;
+    padding: 6px 11px;
+    font-size: 0.72rem;
+    font-family: var(--font-mono);
+    font-weight: 600;
+    background: var(--surface-2);
+    color: var(--text-muted);
+  }
+  .lang-toggle button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+  .lang-toggle button:hover:not([aria-pressed="true"]):not(:disabled) { filter: brightness(0.97); }
+  :root:not([data-theme="light"]) .lang-toggle button:hover:not([aria-pressed="true"]):not(:disabled) { filter: brightness(1.15); }
   .status-pill {
     display: inline-flex;
     align-items: center;
@@ -342,19 +370,25 @@
 <div class="wrap">
 
   <div class="masthead">
-    <div>
-      <h1>WiFi Uplink</h1>
-      <p class="tagline">Configure le SSID, le mot de passe et l'activation WiFi d'un radio compagnon MeshCore, en Bluetooth ou en USB, directement depuis ce navigateur.</p>
+    <div class="masthead-row">
+      <div class="masthead-title-group">
+        <h1>WiFi Uplink</h1>
+        <span class="status-pill" id="statusPill" data-state="idle"><span class="dot"></span><span id="statusText" data-i18n="status_idle">Non connecté</span></span>
+      </div>
+      <div class="lang-toggle" role="group" aria-label="Langue / Language">
+        <button type="button" id="langFr" data-lang="fr" aria-pressed="true">FR</button>
+        <button type="button" id="langEn" data-lang="en" aria-pressed="false">EN</button>
+      </div>
     </div>
-    <span class="status-pill" id="statusPill" data-state="idle"><span class="dot"></span><span id="statusText">Non connecté</span></span>
+    <p class="tagline" data-i18n="tagline">Configure le SSID, le mot de passe et l'activation WiFi d'un radio compagnon MeshCore, en Bluetooth ou en USB, directement depuis ce navigateur.</p>
   </div>
 
-  <div class="banner" id="compatBanner">
+  <div class="banner" id="compatBanner" data-i18n-html="banner_compat">
     <span class="glyph">i</span>
     <div><strong>Chrome ou Edge requis</strong>, sur Windows ou Android. Safari (iOS/Mac) ne supporte ni le Bluetooth ni le port série depuis un navigateur : aucun outil web ne peut le faire, ce n'est pas spécifique à cette page.</div>
   </div>
 
-  <div class="banner warn">
+  <div class="banner warn" id="warnBanner" data-i18n-html="banner_warn">
     <span class="glyph">!</span>
     <div><strong>Firmware communautaire, pas officiel.</strong> Cette page parle aux builds <code>DUAL_BLE_WIFI</code> (BLE + USB + WiFi simultanés) et <code>EXCLUSIVE_BLE_WIFI</code> (BLE ou WiFi, un seul actif à la fois, bascule par redémarrage) décrits dans le dépôt associé. Elle n'a aucun effet sur un firmware MeshCore standard. Solution de dépannage en attendant qu'un firmware companion multi-transport soit proposé officiellement en amont.</div>
   </div>
@@ -363,53 +397,53 @@
 
     <div class="stack">
       <div class="card">
-        <h2>Connexion</h2>
-        <p class="sub">Choisis le transport, puis autorise l'appareil dans la fenêtre du navigateur.</p>
+        <h2 data-i18n="card_connexion_title">Connexion</h2>
+        <p class="sub" data-i18n="card_connexion_sub">Choisis le transport, puis autorise l'appareil dans la fenêtre du navigateur.</p>
         <div class="transport-row">
           <button class="primary" id="btnBle" type="button">Bluetooth</button>
           <button class="primary" id="btnUsb" type="button">USB</button>
         </div>
-        <button class="ghost full small" id="btnDisconnect" type="button" disabled>Déconnecter</button>
+        <button class="ghost full small" id="btnDisconnect" type="button" disabled data-i18n="btn_disconnect">Déconnecter</button>
         <p class="unsupported-note" id="unsupportedNote" hidden></p>
 
         <dl class="kv" id="deviceInfo">
-          <dt colspan="2" class="kv-empty" style="grid-column: 1 / -1;">Aucun appareil connecté pour le moment.</dt>
+          <dt colspan="2" class="kv-empty" style="grid-column: 1 / -1;" data-i18n="device_info_empty">Aucun appareil connecté pour le moment.</dt>
         </dl>
       </div>
     </div>
 
     <div class="card">
-      <h2>Reglages WiFi</h2>
-      <p class="sub">Le mot de passe n'est jamais relu depuis l'appareil : laisse le champ vide pour ne pas le changer.</p>
+      <h2 data-i18n="card_wifi_title">Réglages WiFi</h2>
+      <p class="sub" data-i18n="card_wifi_sub">Le mot de passe n'est jamais relu depuis l'appareil : laisse le champ vide pour ne pas le changer.</p>
 
       <div class="field">
-        <label for="fSsid">Nom du réseau (SSID)</label>
-        <input type="text" id="fSsid" maxlength="31" placeholder="Connecte-toi d'abord" disabled>
-        <p class="hint"><span class="charcount" id="ssidCount">0</span> / 31 caractères</p>
+        <label for="fSsid" data-i18n="label_ssid">Nom du réseau (SSID)</label>
+        <input type="text" id="fSsid" maxlength="31" placeholder="Connecte-toi d'abord" data-i18n-placeholder="placeholder_ssid" disabled>
+        <p class="hint"><span class="charcount" id="ssidCount">0</span> <span data-i18n="hint_ssid_suffix">/ 31 caractères</span></p>
       </div>
 
       <div class="field">
-        <label for="fPwd">Mot de passe</label>
+        <label for="fPwd" data-i18n="label_pwd">Mot de passe</label>
         <div class="pwd-row">
-          <input type="password" id="fPwd" maxlength="63" placeholder="Laisser vide pour ne pas changer" disabled>
-          <button class="small" id="btnShowPwd" type="button" disabled>Afficher</button>
+          <input type="password" id="fPwd" maxlength="63" placeholder="Laisser vide pour ne pas changer" data-i18n-placeholder="placeholder_pwd" disabled>
+          <button class="small" id="btnShowPwd" type="button" disabled data-i18n="btn_show_pwd">Afficher</button>
         </div>
-        <p class="hint"><span class="charcount" id="pwdCount">0</span> / 63 caractères</p>
+        <p class="hint"><span class="charcount" id="pwdCount">0</span> <span data-i18n="hint_pwd_suffix">/ 63 caractères</span></p>
       </div>
 
       <div class="toggle-row">
         <input type="checkbox" id="fEnabled" disabled>
-        <label for="fEnabled">Activer le WiFi (rejoint le réseau au démarrage, bascule aussi possible depuis l'écran de l'appareil)</label>
+        <label for="fEnabled" data-i18n="label_enabled">Activer le WiFi (rejoint le réseau au démarrage, bascule aussi possible depuis l'écran de l'appareil)</label>
       </div>
 
       <div class="form-actions">
-        <button class="ghost" id="btnRefresh" type="button" disabled>Lire les réglages actuels</button>
-        <button class="primary" id="btnSave" type="button" disabled>Enregistrer</button>
+        <button class="ghost" id="btnRefresh" type="button" disabled data-i18n="btn_refresh">Lire les réglages actuels</button>
+        <button class="primary" id="btnSave" type="button" disabled data-i18n="btn_save">Enregistrer</button>
       </div>
 
       <div class="banner action" id="applyBanner" hidden style="margin-top: 16px; margin-bottom: 0;">
         <p id="applyBannerText"></p>
-        <button class="primary full" id="btnReboot" type="button">Redémarrer maintenant</button>
+        <button class="primary full" id="btnReboot" type="button" data-i18n="btn_reboot">Redémarrer maintenant</button>
       </div>
     </div>
 
@@ -417,15 +451,15 @@
 
   <div class="card console-card" style="margin-top: 20px;">
     <div class="console-head">
-      <h2>Journal</h2>
-      <button class="ghost small" id="btnClearLog" type="button">Effacer</button>
+      <h2 data-i18n="card_journal_title">Journal</h2>
+      <button class="ghost small" id="btnClearLog" type="button" data-i18n="btn_clear_log">Effacer</button>
     </div>
     <div class="console" id="console" role="log" aria-live="polite"></div>
   </div>
 
   <footer>
-    <div>Protocole : trames binaires du companion radio MeshCore (<code>CMD_SET_CUSTOM_VAR</code> / <code>CMD_GET_CUSTOM_VARS</code>), service BLE UART Nordic, framing série par en-tête <code>&lt;</code>/<code>&gt;</code> + longueur. Aucune donnée ne quitte ce navigateur : tout se passe en direct entre cette page et l'appareil.</div>
-    <div>Reference protocole : <a href="https://github.com/meshcore-dev/MeshCore/wiki/Companion-Radio-Protocol" target="_blank" rel="noopener">meshcore-dev/MeshCore wiki</a>.</div>
+    <div id="footerProtocol" data-i18n-html="footer_protocol">Protocole : trames binaires du companion radio MeshCore (<code>CMD_SET_CUSTOM_VAR</code> / <code>CMD_GET_CUSTOM_VARS</code>), service BLE UART Nordic, framing série par en-tête <code>&lt;</code>/<code>&gt;</code> + longueur. Aucune donnée ne quitte ce navigateur : tout se passe en direct entre cette page et l'appareil.</div>
+    <div id="footerReference" data-i18n-html="footer_reference">Référence protocole : <a href="https://github.com/meshcore-dev/MeshCore/wiki/Companion-Radio-Protocol" target="_blank" rel="noopener">meshcore-dev/MeshCore wiki</a>.</div>
   </footer>
 
 </div>
@@ -433,6 +467,219 @@
 <script>
 (function () {
   "use strict";
+
+  // ---------------- i18n ----------------
+  var LANG_KEY = "wifiUplinkLang";
+  var currentLang = (function () {
+    try {
+      var saved = localStorage.getItem(LANG_KEY);
+      if (saved === "fr" || saved === "en") return saved;
+    } catch (e) { /* localStorage unavailable, fall through to default */ }
+    return "fr";
+  })();
+
+  var I18N = {
+    fr: {
+      tagline: "Configure le SSID, le mot de passe et l'activation WiFi d'un radio compagnon MeshCore, en Bluetooth ou en USB, directement depuis ce navigateur.",
+      status_idle: "Non connecté",
+      status_reading: "Lecture...",
+      status_saving: "Enregistrement...",
+      status_connected: "Connecté ({t})",
+      banner_compat: '<span class="glyph">i</span><div><strong>Chrome ou Edge requis</strong>, sur Windows ou Android. Safari (iOS/Mac) ne supporte ni le Bluetooth ni le port série depuis un navigateur : aucun outil web ne peut le faire, ce n\'est pas spécifique à cette page.</div>',
+      banner_warn: '<span class="glyph">!</span><div><strong>Firmware communautaire, pas officiel.</strong> Cette page parle aux builds <code>DUAL_BLE_WIFI</code> (BLE + USB + WiFi simultanés) et <code>EXCLUSIVE_BLE_WIFI</code> (BLE ou WiFi, un seul actif à la fois, bascule par redémarrage) décrits dans le dépôt associé. Elle n\'a aucun effet sur un firmware MeshCore standard. Solution de dépannage en attendant qu\'un firmware companion multi-transport soit proposé officiellement en amont.</div>',
+      card_connexion_title: "Connexion",
+      card_connexion_sub: "Choisis le transport, puis autorise l'appareil dans la fenêtre du navigateur.",
+      btn_disconnect: "Déconnecter",
+      device_info_empty: "Aucun appareil connecté pour le moment.",
+      unsupported_none: "Ni Web Bluetooth ni Web Serial ne sont disponibles ici. Ouvre cette page dans Chrome ou Edge, sur Windows ou Android.",
+      unsupported_no_usb: "USB indisponible dans ce navigateur (Web Serial). Le Bluetooth reste utilisable.",
+      unsupported_no_ble: "Bluetooth indisponible dans ce navigateur (Web Bluetooth). L'USB reste utilisable.",
+      card_wifi_title: "Réglages WiFi",
+      card_wifi_sub: "Le mot de passe n'est jamais relu depuis l'appareil : laisse le champ vide pour ne pas le changer.",
+      label_ssid: "Nom du réseau (SSID)",
+      placeholder_ssid: "Connecte-toi d'abord",
+      hint_ssid_suffix: "/ 31 caractères",
+      label_pwd: "Mot de passe",
+      placeholder_pwd: "Laisser vide pour ne pas changer",
+      hint_pwd_suffix: "/ 63 caractères",
+      btn_show_pwd: "Afficher",
+      btn_hide_pwd: "Masquer",
+      label_enabled: "Activer le WiFi (rejoint le réseau au démarrage, bascule aussi possible depuis l'écran de l'appareil)",
+      btn_refresh: "Lire les réglages actuels",
+      btn_save: "Enregistrer",
+      btn_reboot: "Redémarrer maintenant",
+      card_journal_title: "Journal",
+      btn_clear_log: "Effacer",
+      footer_protocol: 'Protocole : trames binaires du companion radio MeshCore (<code>CMD_SET_CUSTOM_VAR</code> / <code>CMD_GET_CUSTOM_VARS</code>), service BLE UART Nordic, framing série par en-tête <code>&lt;</code>/<code>&gt;</code> + longueur. Aucune donnée ne quitte ce navigateur : tout se passe en direct entre cette page et l\'appareil.',
+      footer_reference: 'Référence protocole : <a href="https://github.com/meshcore-dev/MeshCore/wiki/Companion-Radio-Protocol" target="_blank" rel="noopener">meshcore-dev/MeshCore wiki</a>.',
+      dev_info_model: "Modèle",
+      dev_info_version: "Version",
+      dev_info_build: "Compilation",
+      err_1: "commande non supportée",
+      err_2: "introuvable",
+      err_3: "table pleine",
+      err_4: "état invalide",
+      err_5: "erreur de stockage",
+      err_6: "argument invalide",
+      err_unknown: "code {code}",
+      log_ble_unavailable: "Web Bluetooth indisponible dans ce navigateur.",
+      log_ble_pairing_request: "Demande d'appairage Bluetooth...",
+      log_ble_device_chosen: "Appareil choisi : {name}. Connexion GATT...",
+      log_ble_no_name: "(sans nom)",
+      log_connected_established: "Connexion {label} établie.",
+      log_ble_connect_failed: "Connexion Bluetooth annulée ou en échec : {err}",
+      log_ble_disconnected: "Bluetooth déconnecté.",
+      log_usb_unavailable: "Web Serial indisponible dans ce navigateur.",
+      log_usb_port_request: "Demande de port série...",
+      log_usb_unplugged: "USB débranché.",
+      log_usb_connect_failed: "Connexion USB annulée ou en échec : {err}",
+      log_disconnected: "Déconnecté.",
+      log_read_failed: "Lecture impossible : {err}",
+      log_settings_saved: "Réglages enregistrés.",
+      log_save_failed: "Échec de l'enregistrement : {err}",
+      log_reboot_requested: "Redémarrage demandé.",
+      log_reboot_sent: "Commande envoyée. L'appareil redémarre, la connexion va se couper.",
+      log_reboot_send_failed: "Échec de l'envoi : {err}",
+      log_frame_device_info: "Trame RESP_CODE_DEVICE_INFO reçue ({n} octets)",
+      log_frame_custom_vars: "RESP_CODE_CUSTOM_VARS : {text}",
+      log_empty: "(vide)",
+      log_resp_ok: "RESP_CODE_OK",
+      log_resp_err: "RESP_CODE_ERR : {err}",
+      log_frame_generic: "Trame reçue, code {code} ({n} octets)",
+      log_sent_bytes: "-> {n} octets ({t})",
+      log_page_ready: "Page prête. {parts}disponible(s) dans ce navigateur.",
+      err_request_pending: "Une requête est déjà en cours.",
+      err_timeout: "Pas de réponse (délai dépassé).",
+      err_not_connected: "Non connecté.",
+      err_ble_char_unavailable: "Caractéristique BLE indisponible.",
+      err_usb_unavailable: "Port USB indisponible.",
+      reboot_reason_to_wifi: "passage au WiFi",
+      reboot_reason_to_ble: "retour au BLE",
+      reboot_reason_reconnect: "reconnexion avec le SSID/mot de passe modifié",
+      apply_needed: "Redémarrage nécessaire pour appliquer ce changement ({reason}). Rien n'est actif tant que ce n'est pas fait.",
+      apply_not_needed: "WiFi désactivé : aucun redémarrage nécessaire pour l'instant. Ces identifiants seront utilisés à la prochaine activation du WiFi. Attention : une erreur de SSID ou de mot de passe ne peut être détectée qu'à ce moment-là, il n'y a pas de vérification immédiate sans redémarrer."
+    },
+    en: {
+      tagline: "Configure the SSID, password and WiFi activation of a MeshCore companion radio, over Bluetooth or USB, straight from this browser.",
+      status_idle: "Not connected",
+      status_reading: "Reading...",
+      status_saving: "Saving...",
+      status_connected: "Connected ({t})",
+      banner_compat: '<span class="glyph">i</span><div><strong>Chrome or Edge required</strong>, on Windows or Android. Safari (iOS/Mac) supports neither Bluetooth nor serial ports from a browser: no web tool can do it, it is not specific to this page.</div>',
+      banner_warn: '<span class="glyph">!</span><div><strong>Community firmware, not official.</strong> This page talks to the <code>DUAL_BLE_WIFI</code> builds (BLE + USB + WiFi at once) and <code>EXCLUSIVE_BLE_WIFI</code> (BLE or WiFi, only one active at a time, switched by reboot) described in the linked repository. It has no effect on a standard MeshCore firmware. A workaround while a multi-transport companion firmware is proposed upstream officially.</div>',
+      card_connexion_title: "Connection",
+      card_connexion_sub: "Pick a transport, then allow the device in the browser's popup.",
+      btn_disconnect: "Disconnect",
+      device_info_empty: "No device connected yet.",
+      unsupported_none: "Neither Web Bluetooth nor Web Serial is available here. Open this page in Chrome or Edge, on Windows or Android.",
+      unsupported_no_usb: "USB unavailable in this browser (Web Serial). Bluetooth still works.",
+      unsupported_no_ble: "Bluetooth unavailable in this browser (Web Bluetooth). USB still works.",
+      card_wifi_title: "WiFi settings",
+      card_wifi_sub: "The password is never read back from the device: leave the field blank to keep it unchanged.",
+      label_ssid: "Network name (SSID)",
+      placeholder_ssid: "Connect first",
+      hint_ssid_suffix: "/ 31 characters",
+      label_pwd: "Password",
+      placeholder_pwd: "Leave blank to keep unchanged",
+      hint_pwd_suffix: "/ 63 characters",
+      btn_show_pwd: "Show",
+      btn_hide_pwd: "Hide",
+      label_enabled: "Enable WiFi (joins the network at startup, can also be switched from the device's screen)",
+      btn_refresh: "Read current settings",
+      btn_save: "Save",
+      btn_reboot: "Restart now",
+      card_journal_title: "Log",
+      btn_clear_log: "Clear",
+      footer_protocol: 'Protocol: binary frames of the MeshCore companion radio (<code>CMD_SET_CUSTOM_VAR</code> / <code>CMD_GET_CUSTOM_VARS</code>), Nordic BLE UART service, serial framing with a <code>&lt;</code>/<code>&gt;</code> header plus length. No data leaves this browser: everything happens directly between this page and the device.',
+      footer_reference: 'Protocol reference: <a href="https://github.com/meshcore-dev/MeshCore/wiki/Companion-Radio-Protocol" target="_blank" rel="noopener">meshcore-dev/MeshCore wiki</a>.',
+      dev_info_model: "Model",
+      dev_info_version: "Version",
+      dev_info_build: "Build",
+      err_1: "command not supported",
+      err_2: "not found",
+      err_3: "table full",
+      err_4: "invalid state",
+      err_5: "storage error",
+      err_6: "invalid argument",
+      err_unknown: "code {code}",
+      log_ble_unavailable: "Web Bluetooth unavailable in this browser.",
+      log_ble_pairing_request: "Requesting Bluetooth pairing...",
+      log_ble_device_chosen: "Device chosen: {name}. Connecting GATT...",
+      log_ble_no_name: "(unnamed)",
+      log_connected_established: "{label} connection established.",
+      log_ble_connect_failed: "Bluetooth connection cancelled or failed: {err}",
+      log_ble_disconnected: "Bluetooth disconnected.",
+      log_usb_unavailable: "Web Serial unavailable in this browser.",
+      log_usb_port_request: "Requesting serial port...",
+      log_usb_unplugged: "USB unplugged.",
+      log_usb_connect_failed: "USB connection cancelled or failed: {err}",
+      log_disconnected: "Disconnected.",
+      log_read_failed: "Read failed: {err}",
+      log_settings_saved: "Settings saved.",
+      log_save_failed: "Save failed: {err}",
+      log_reboot_requested: "Restart requested.",
+      log_reboot_sent: "Command sent. The device is restarting, the connection is about to drop.",
+      log_reboot_send_failed: "Send failed: {err}",
+      log_frame_device_info: "RESP_CODE_DEVICE_INFO frame received ({n} bytes)",
+      log_frame_custom_vars: "RESP_CODE_CUSTOM_VARS: {text}",
+      log_empty: "(empty)",
+      log_resp_ok: "RESP_CODE_OK",
+      log_resp_err: "RESP_CODE_ERR: {err}",
+      log_frame_generic: "Frame received, code {code} ({n} bytes)",
+      log_sent_bytes: "-> {n} bytes ({t})",
+      log_page_ready: "Page ready. {parts}available in this browser.",
+      err_request_pending: "A request is already in progress.",
+      err_timeout: "No response (timed out).",
+      err_not_connected: "Not connected.",
+      err_ble_char_unavailable: "BLE characteristic unavailable.",
+      err_usb_unavailable: "USB port unavailable.",
+      reboot_reason_to_wifi: "switching to WiFi",
+      reboot_reason_to_ble: "switching back to BLE",
+      reboot_reason_reconnect: "reconnecting with the modified SSID/password",
+      apply_needed: "A restart is needed to apply this change ({reason}). Nothing is active until this is done.",
+      apply_not_needed: "WiFi disabled: no restart needed for now. These credentials will be used the next time WiFi is turned on. Note: a typo in the SSID or password cannot be detected until that moment, there is no immediate check without restarting."
+    }
+  };
+
+  function T(key, params) {
+    var s = (I18N[currentLang] && I18N[currentLang][key] !== undefined) ? I18N[currentLang][key] : (I18N.fr[key] !== undefined ? I18N.fr[key] : key);
+    if (params) {
+      Object.keys(params).forEach(function (k) {
+        s = s.split("{" + k + "}").join(params[k]);
+      });
+    }
+    return s;
+  }
+
+  function applyLanguage(lang) {
+    currentLang = (lang === "en") ? "en" : "fr";
+    try { localStorage.setItem(LANG_KEY, currentLang); } catch (e) { /* localStorage unavailable, language just won't persist across reloads */ }
+
+    document.documentElement.lang = currentLang;
+    els.langFr.setAttribute("aria-pressed", currentLang === "fr" ? "true" : "false");
+    els.langEn.setAttribute("aria-pressed", currentLang === "en" ? "true" : "false");
+
+    document.querySelectorAll("[data-i18n]").forEach(function (el) {
+      el.textContent = T(el.getAttribute("data-i18n"));
+    });
+    document.querySelectorAll("[data-i18n-html]").forEach(function (el) {
+      el.innerHTML = T(el.getAttribute("data-i18n-html"));
+    });
+    document.querySelectorAll("[data-i18n-placeholder]").forEach(function (el) {
+      el.placeholder = T(el.getAttribute("data-i18n-placeholder"));
+    });
+
+    // Re-render pieces of dynamic state so switching language mid-session
+    // updates what's already on screen, not just future actions.
+    els.btnShowPwd.textContent = (els.fPwd.type === "password") ? T("btn_show_pwd") : T("btn_hide_pwd");
+    if (state.lastDeviceInfo) renderDeviceInfo(state.lastDeviceInfo);
+    if (state.unsupportedKey) {
+      els.unsupportedNote.textContent = T(state.unsupportedKey);
+    }
+    if (state.statusKey) {
+      setStatus(T(state.statusKey, state.statusParams), els.statusPill.dataset.state);
+    }
+  }
 
   // ---------------- protocol constants (read directly from firmware source) ----------------
   var SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
@@ -449,14 +696,10 @@
   var RESP_CODE_DEVICE_INFO = 13;
   var RESP_CODE_CUSTOM_VARS = 21;
 
-  var ERR_NAMES = {
-    1: "commande non supportée",
-    2: "introuvable",
-    3: "table pleine",
-    4: "état invalide",
-    5: "erreur de stockage",
-    6: "argument invalide"
-  };
+  function errName(code) {
+    var key = "err_" + code;
+    return (I18N[currentLang][key] !== undefined) ? T(key) : T("err_unknown", { code: code });
+  }
 
   // ---------------- state ----------------
   var state = {
@@ -465,7 +708,10 @@
     usbPort: null, usbReader: null, usbWriter: null,
     connected: false,
     pending: null,       // { resolve, reject, timer }
-    lastKnownWifiEnabled: null   // last value read from the device (RESP_CODE_CUSTOM_VARS), null = unknown yet
+    lastKnownWifiEnabled: null,  // last value read from the device (RESP_CODE_CUSTOM_VARS), null = unknown yet
+    lastDeviceInfo: null,        // re-rendered on language switch
+    unsupportedKey: null,        // i18n key currently shown in the unsupported-browser note, if any
+    statusKey: null, statusParams: null  // i18n key/params currently shown in the status pill
   };
 
   var usbParse = { mode: "idle", len: 0, buf: [] };
@@ -473,6 +719,7 @@
   // ---------------- DOM ----------------
   var $ = function (id) { return document.getElementById(id); };
   var els = {
+    langFr: $("langFr"), langEn: $("langEn"),
     statusPill: $("statusPill"), statusText: $("statusText"),
     btnBle: $("btnBle"), btnUsb: $("btnUsb"), btnDisconnect: $("btnDisconnect"),
     unsupportedNote: $("unsupportedNote"),
@@ -495,9 +742,11 @@
   }
   els.btnClearLog.addEventListener("click", function () { els.consoleEl.innerHTML = ""; });
 
-  function setStatus(text, kindState) {
+  function setStatus(text, kindState, key, params) {
     els.statusText.textContent = text;
     els.statusPill.dataset.state = kindState || "idle";
+    state.statusKey = key || null;
+    state.statusParams = params || null;
   }
 
   function setFormEnabled(on) {
@@ -509,7 +758,7 @@
   els.btnShowPwd.addEventListener("click", function () {
     var isPwd = els.fPwd.type === "password";
     els.fPwd.type = isPwd ? "text" : "password";
-    els.btnShowPwd.textContent = isPwd ? "Masquer" : "Afficher";
+    els.btnShowPwd.textContent = isPwd ? T("btn_hide_pwd") : T("btn_show_pwd");
   });
 
   // ---------------- frame encode/decode ----------------
@@ -533,23 +782,23 @@
     }
 
     if (code === RESP_CODE_DEVICE_INFO && bytes.length >= 82) {
-      var dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
       var buildDate = asciiSlice(bytes, 8, 20);
       var manufacturer = asciiSlice(bytes, 20, 60);
       var version = asciiSlice(bytes, 60, 80);
-      renderDeviceInfo({ manufacturer: manufacturer, version: version, buildDate: buildDate });
-      log("Trame RESP_CODE_DEVICE_INFO recue (" + bytes.length + " octets)", "in");
+      var info = { manufacturer: manufacturer, version: version, buildDate: buildDate };
+      state.lastDeviceInfo = info;
+      renderDeviceInfo(info);
+      log(T("log_frame_device_info", { n: bytes.length }), "in");
     } else if (code === RESP_CODE_CUSTOM_VARS) {
       var text = new TextDecoder().decode(bytes.subarray(1));
-      log("RESP_CODE_CUSTOM_VARS : " + (text || "(vide)"), "in");
+      log(T("log_frame_custom_vars", { text: text || T("log_empty") }), "in");
       applyCustomVars(text);
     } else if (code === RESP_CODE_OK) {
-      log("RESP_CODE_OK", "ok");
+      log(T("log_resp_ok"), "ok");
     } else if (code === RESP_CODE_ERR) {
-      var errName = ERR_NAMES[bytes[1]] || ("code " + bytes[1]);
-      log("RESP_CODE_ERR : " + errName, "err");
+      log(T("log_resp_err", { err: errName(bytes[1]) }), "err");
     } else {
-      log("Trame recue, code " + code + " (" + bytes.length + " octets)", "in");
+      log(T("log_frame_generic", { code: code, n: bytes.length }), "in");
     }
   }
 
@@ -564,9 +813,9 @@
 
   function renderDeviceInfo(info) {
     els.deviceInfo.innerHTML =
-      "<dt>Modèle</dt><dd>" + escapeHtml(info.manufacturer || "?") + "</dd>" +
-      "<dt>Version</dt><dd>" + escapeHtml(info.version || "?") + "</dd>" +
-      "<dt>Compilation</dt><dd>" + escapeHtml(info.buildDate || "?") + "</dd>";
+      "<dt>" + T("dev_info_model") + "</dt><dd>" + escapeHtml(info.manufacturer || "?") + "</dd>" +
+      "<dt>" + T("dev_info_version") + "</dt><dd>" + escapeHtml(info.version || "?") + "</dd>" +
+      "<dt>" + T("dev_info_build") + "</dt><dd>" + escapeHtml(info.buildDate || "?") + "</dd>";
   }
   function escapeHtml(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
 
@@ -600,13 +849,13 @@
   // ---------------- request/response plumbing ----------------
   function sendAndWait(bytes, timeoutMs) {
     return new Promise(function (resolve, reject) {
-      if (state.pending) { reject(new Error("Une requête est déjà en cours.")); return; }
+      if (state.pending) { reject(new Error(T("err_request_pending"))); return; }
       state.pending = {
         resolve: resolve,
         reject: reject,
         timer: setTimeout(function () {
           state.pending = null;
-          reject(new Error("Pas de réponse (délai dépassé)."));
+          reject(new Error(T("err_timeout")));
         }, timeoutMs || 5000)
       };
       transportSend(bytes).catch(function (e) {
@@ -619,18 +868,18 @@
   function transportSend(bytes) {
     if (state.transport === "ble") return sendBle(bytes);
     if (state.transport === "usb") return sendUsb(bytes);
-    return Promise.reject(new Error("Non connecté."));
+    return Promise.reject(new Error(T("err_not_connected")));
   }
 
   // ---------------- BLE transport ----------------
   function connectBle() {
-    if (!navigator.bluetooth) { log("Web Bluetooth indisponible dans ce navigateur.", "err"); return; }
-    log("Demande d'appairage Bluetooth...", "out");
+    if (!navigator.bluetooth) { log(T("log_ble_unavailable"), "err"); return; }
+    log(T("log_ble_pairing_request"), "out");
     navigator.bluetooth.requestDevice({ filters: [{ services: [SERVICE_UUID] }], optionalServices: [SERVICE_UUID] })
       .then(function (device) {
         state.bleDevice = device;
         device.addEventListener("gattserverdisconnected", onBleDisconnected);
-        log("Appareil choisi : " + (device.name || "(sans nom)") + ". Connexion GATT...", "out");
+        log(T("log_ble_device_chosen", { name: device.name || T("log_ble_no_name") }), "out");
         return device.gatt.connect();
       })
       .then(function (server) { return server.getPrimaryService(SERVICE_UUID); })
@@ -651,25 +900,25 @@
         onConnected("Bluetooth");
       })
       .catch(function (e) {
-        log("Connexion Bluetooth annulée ou en échec : " + e.message, "err");
+        log(T("log_ble_connect_failed", { err: e.message }), "err");
       });
   }
 
   function sendBle(bytes) {
-    if (!state.bleRx) return Promise.reject(new Error("Caracteristique BLE indisponible."));
-    log("-> " + bytes.length + " octets (BLE)", "out");
+    if (!state.bleRx) return Promise.reject(new Error(T("err_ble_char_unavailable")));
+    log(T("log_sent_bytes", { n: bytes.length, t: "BLE" }), "out");
     if (state.bleRx.writeValueWithResponse) return state.bleRx.writeValueWithResponse(bytes);
     return state.bleRx.writeValue(bytes);
   }
 
   function onBleDisconnected() {
-    if (state.transport === "ble") { log("Bluetooth déconnecté.", "err"); onDisconnected(); }
+    if (state.transport === "ble") { log(T("log_ble_disconnected"), "err"); onDisconnected(); }
   }
 
   // ---------------- USB (Web Serial) transport ----------------
   function connectUsb() {
-    if (!navigator.serial) { log("Web Serial indisponible dans ce navigateur.", "err"); return; }
-    log("Demande de port série...", "out");
+    if (!navigator.serial) { log(T("log_usb_unavailable"), "err"); return; }
+    log(T("log_usb_port_request"), "out");
     var port;
     navigator.serial.requestPort()
       .then(function (p) { port = p; return p.open({ baudRate: 115200 }); })
@@ -677,7 +926,7 @@
         state.usbPort = port;
         state.usbWriter = port.writable.getWriter();
         port.addEventListener("disconnect", function () {
-          if (state.transport === "usb") { log("USB débranché.", "err"); onDisconnected(); }
+          if (state.transport === "usb") { log(T("log_usb_unplugged"), "err"); onDisconnected(); }
         });
         usbParse = { mode: "idle", len: 0, buf: [] };
         readLoopUsb(port);
@@ -685,7 +934,7 @@
         onConnected("USB");
       })
       .catch(function (e) {
-        log("Connexion USB annulée ou en échec : " + e.message, "err");
+        log(T("log_usb_connect_failed", { err: e.message }), "err");
       });
   }
 
@@ -726,22 +975,22 @@
   }
 
   function sendUsb(bytes) {
-    if (!state.usbWriter) return Promise.reject(new Error("Port USB indisponible."));
+    if (!state.usbWriter) return Promise.reject(new Error(T("err_usb_unavailable")));
     var hdr = new Uint8Array([0x3C /* '<' */, bytes.length & 0xFF, (bytes.length >> 8) & 0xFF]);
     var out = new Uint8Array(hdr.length + bytes.length);
     out.set(hdr, 0); out.set(bytes, hdr.length);
-    log("-> " + bytes.length + " octets (USB)", "out");
+    log(T("log_sent_bytes", { n: bytes.length, t: "USB" }), "out");
     return state.usbWriter.write(out);
   }
 
   // ---------------- connect / disconnect lifecycle ----------------
   function onConnected(label) {
     state.connected = true;
-    setStatus("Connecté (" + label + ")", "connected");
+    setStatus(T("status_connected", { t: label }), "connected", "status_connected", { t: label });
     els.btnDisconnect.disabled = false;
     els.btnBle.disabled = true; els.btnUsb.disabled = true;
     setFormEnabled(true);
-    log("Connexion " + label + " établie.", "ok");
+    log(T("log_connected_established", { label: label }), "ok");
     queryAndRefresh();
   }
 
@@ -750,11 +999,12 @@
     state.transport = null;
     state.bleDevice = null; state.bleRx = null;
     state.usbPort = null; state.usbReader = null; state.usbWriter = null;
-    setStatus("Non connecté", "idle");
+    setStatus(T("status_idle"), "idle", "status_idle", null);
     els.btnDisconnect.disabled = true;
     els.btnBle.disabled = false; els.btnUsb.disabled = false;
     setFormEnabled(false);
-    els.deviceInfo.innerHTML = '<dt colspan="2" class="kv-empty" style="grid-column: 1 / -1;">Aucun appareil connecté pour le moment.</dt>';
+    state.lastDeviceInfo = null;
+    els.deviceInfo.innerHTML = '<dt colspan="2" class="kv-empty" style="grid-column: 1 / -1;">' + T("device_info_empty") + "</dt>";
     els.fSsid.value = ""; els.fPwd.value = ""; els.fEnabled.checked = false;
     els.ssidCount.textContent = "0"; els.pwdCount.textContent = "0";
     state.lastKnownWifiEnabled = null;
@@ -772,15 +1022,22 @@
         .catch(function () {});
     }
     onDisconnected();
-    log("Déconnecté.", "info");
+    log(T("log_disconnected"), "info");
   }
 
   function queryAndRefresh() {
-    setStatus("Lecture...", "busy");
+    setStatus(T("status_reading"), "busy", null, null);
     sendAndWait(new Uint8Array([CMD_DEVICE_QUERY, 3]))
       .then(function () { return sendAndWait(new Uint8Array([CMD_GET_CUSTOM_VARS])); })
-      .then(function () { setStatus("Connecté (" + (state.transport === "ble" ? "Bluetooth" : "USB") + ")", "connected"); })
-      .catch(function (e) { log("Lecture impossible : " + e.message, "err"); setStatus("Connecte", "connected"); });
+      .then(function () {
+        var t = state.transport === "ble" ? "Bluetooth" : "USB";
+        setStatus(T("status_connected", { t: t }), "connected", "status_connected", { t: t });
+      })
+      .catch(function (e) {
+        log(T("log_read_failed", { err: e.message }), "err");
+        var t = state.transport === "ble" ? "Bluetooth" : "USB";
+        setStatus(T("status_connected", { t: t }), "connected", "status_connected", { t: t });
+      });
   }
 
   // ---------------- save flow ----------------
@@ -793,7 +1050,7 @@
 
     els.btnSave.disabled = true;
     hideApplyBanner();
-    setStatus("Enregistrement...", "busy");
+    setStatus(T("status_saving"), "busy", null, null);
 
     var chain = Promise.resolve();
     if (ssid.length > 0) {
@@ -806,66 +1063,72 @@
 
     chain
       .then(function () {
-        log("Réglages enregistrés.", "ok");
+        log(T("log_settings_saved"), "ok");
         els.fPwd.value = ""; els.pwdCount.textContent = "0";
         state.lastKnownWifiEnabled = newEnabled;
 
-        // Un redémarrage est réellement nécessaire dans ces cas (rien, dans ce
-        // firmware, ne relit le SSID/mot de passe ou ne bascule de radio sans
-        // redémarrer) :
-        //  - le mode BLE/WiFi change (case cochée/décochée par rapport à ce
-        //    qui était su avant cet enregistrement),
-        //  - ou le WiFi reste le mode actif et le SSID/mot de passe vient
-        //    d'être modifié (la connexion en cours ne relit jamais les
-        //    nouveaux identifiants toute seule).
-        // Si le WiFi reste désactivé (BLE actif avant et après), rien à
-        // redémarrer maintenant : les identifiants seront simplement utilisés
-        // au prochain passage en WiFi.
+        // A restart is genuinely needed in these cases (nothing in this
+        // firmware re-reads the SSID/password or switches radio without
+        // restarting):
+        //  - the BLE/WiFi mode changes (checkbox flipped compared to what
+        //    was known before this save),
+        //  - or WiFi stays the active mode and the SSID/password was just
+        //    edited (the current connection never re-reads new credentials
+        //    on its own).
+        // If WiFi stays disabled (BLE active before and after), nothing to
+        // restart right now: the credentials will simply be used the next
+        // time WiFi is turned on.
         var modeChanged = (oldEnabled !== null) && (oldEnabled !== newEnabled);
         var needsReboot = modeChanged || (newEnabled && ssidOrPwdChanged) || (newEnabled && oldEnabled === null);
 
         if (needsReboot) {
-          showApplyBanner(
-            "Redémarrage nécessaire pour appliquer ce changement (" +
-            (modeChanged ? (newEnabled ? "passage au WiFi" : "retour au BLE") : "reconnexion avec le SSID/mot de passe modifié") +
-            "). Rien n'est actif tant que ce n'est pas fait.",
-            true
-          );
+          var reasonKey = modeChanged ? (newEnabled ? "reboot_reason_to_wifi" : "reboot_reason_to_ble") : "reboot_reason_reconnect";
+          showApplyBanner(T("apply_needed", { reason: T(reasonKey) }), true);
         } else {
-          showApplyBanner(
-            "WiFi désactivé : aucun redémarrage nécessaire pour l'instant. Ces identifiants seront utilisés à la prochaine activation du WiFi. Attention : une erreur de SSID ou de mot de passe ne peut être détectée qu'à ce moment-là, il n'y a pas de vérification immédiate sans redémarrer.",
-            false
-          );
+          showApplyBanner(T("apply_not_needed"), false);
         }
       })
-      .catch(function (e) { log("Échec de l'enregistrement : " + e.message, "err"); })
-      .then(function () { els.btnSave.disabled = false; setStatus("Connecté (" + (state.transport === "ble" ? "Bluetooth" : "USB") + ")", "connected"); });
+      .catch(function (e) { log(T("log_save_failed", { err: e.message }), "err"); })
+      .then(function () {
+        els.btnSave.disabled = false;
+        var t = state.transport === "ble" ? "Bluetooth" : "USB";
+        setStatus(T("status_connected", { t: t }), "connected", "status_connected", { t: t });
+      });
   }
 
   function rebootDevice() {
     els.btnReboot.disabled = true;
-    log("Redémarrage demandé.", "out");
+    log(T("log_reboot_requested"), "out");
     transportSend(textFrame(CMD_REBOOT, "reboot"))
       .then(function () {
-        log("Commande envoyée. L'appareil redémarre, la connexion va se couper.", "info");
+        log(T("log_reboot_sent"), "info");
       })
       .catch(function (e) {
-        log("Échec de l'envoi : " + e.message, "err");
+        log(T("log_reboot_send_failed", { err: e.message }), "err");
         els.btnReboot.disabled = false;
       });
-    // Pas de sendAndWait ici : board.reboot() coupe la carte directement,
-    // sans jamais répondre. Le firmware n'envoie aucune trame après ça.
+    // No sendAndWait here: board.reboot() cuts the device off directly,
+    // it never replies. The firmware sends no frame after this.
   }
 
   // ---------------- wire up ----------------
+  els.langFr.addEventListener("click", function () { applyLanguage("fr"); });
+  els.langEn.addEventListener("click", function () { applyLanguage("en"); });
   els.btnBle.addEventListener("click", connectBle);
   els.btnUsb.addEventListener("click", connectUsb);
   els.btnDisconnect.addEventListener("click", disconnect);
   els.btnRefresh.addEventListener("click", function () {
-    setStatus("Lecture...", "busy");
+    setStatus(T("status_reading"), "busy", null, null);
     sendAndWait(new Uint8Array([CMD_GET_CUSTOM_VARS]))
-      .then(function () { setStatus("Connecté (" + (state.transport === "ble" ? "Bluetooth" : "USB") + ")", "connected"); })
-      .catch(function (e) { log("Lecture impossible : " + e.message, "err"); setStatus("Connecte", "connected"); });
+      .then(function () {
+        var t = state.transport === "ble" ? "Bluetooth" : "USB";
+        setStatus(T("status_connected", { t: t }), "connected", "status_connected", { t: t });
+      })
+      .catch(function (e) {
+        log(T("log_read_failed", { err: e.message }), "err");
+        var t = state.transport === "ble" ? "Bluetooth" : "USB";
+        setStatus(T("status_connected", { t: t }), "connected", "status_connected", { t: t });
+      });
   });
   els.btnSave.addEventListener("click", saveSettings);
   els.btnReboot.addEventListener("click", rebootDevice);
@@ -877,15 +1140,18 @@
   if (!hasUsb) els.btnUsb.disabled = true;
   if (!hasBle && !hasUsb) {
     els.unsupportedNote.hidden = false;
-    els.unsupportedNote.textContent = "Ni Web Bluetooth ni Web Serial ne sont disponibles ici. Ouvre cette page dans Chrome ou Edge, sur Windows ou Android.";
+    state.unsupportedKey = "unsupported_none";
   } else if (!hasUsb) {
     els.unsupportedNote.hidden = false;
-    els.unsupportedNote.textContent = "USB indisponible dans ce navigateur (Web Serial). Le Bluetooth reste utilisable.";
+    state.unsupportedKey = "unsupported_no_usb";
   } else if (!hasBle) {
     els.unsupportedNote.hidden = false;
-    els.unsupportedNote.textContent = "Bluetooth indisponible dans ce navigateur (Web Bluetooth). L'USB reste utilisable.";
+    state.unsupportedKey = "unsupported_no_ble";
   }
 
-  log("Page prête. " + (hasBle ? "Bluetooth " : "") + (hasUsb ? "USB " : "") + "disponible(s) dans ce navigateur.", "info");
+  // ---------------- initial render ----------------
+  applyLanguage(currentLang);
+  var readyParts = (hasBle ? "Bluetooth " : "") + (hasUsb ? "USB " : "");
+  log(T("log_page_ready", { parts: readyParts }), "info");
 })();
 </script>
