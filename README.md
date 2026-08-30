@@ -1,5 +1,7 @@
 # MeshCore Companion : BLE ou WiFi (exclusif) + USB
 
+---
+
 Firmware communautaire pour le rôle Companion de [MeshCore](https://github.com/meshcore-dev/MeshCore),
 basé sur le tag officiel `companion-v1.17.1`. Bluetooth **ou** WiFi, un seul actif à
 la fois, la bascule se faisant par un redémarrage complet ; l'USB reste toujours
@@ -27,8 +29,6 @@ mémoire au démarrage, ce qui ne laisse pas assez de marge pour que le WiFi ter
 connexion. Plutôt que de maintenir deux mécanismes différents selon la board, seul le
 mode exclusif (`EXCLUSIVE_BLE_WIFI`) est désormais proposé et maintenu, sur les deux
 boards.
-
----
 
 ## Ce que ça apporte
 
