@@ -146,12 +146,22 @@
     font-size: 0.88rem;
     margin-bottom: 22px;
   }
+  .banner[hidden] { display: none; }
   .banner strong { color: var(--secondary); }
   .banner.warn {
     background: var(--danger-soft);
     border-color: color-mix(in srgb, var(--danger) 35%, transparent);
   }
   .banner.warn strong { color: var(--danger); }
+  .banner.action {
+    background: var(--accent-soft);
+    border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .banner.action strong { color: var(--accent); }
+  .banner.action .glyph { display: none; }
+  .banner.action p { margin: 0 0 10px; }
   .banner .glyph { font-family: var(--font-mono); font-weight: 500; flex: none; opacity: 0.75; }
 
   /* ---------- grid ---------- */
@@ -336,17 +346,17 @@
       <h1>WiFi Uplink</h1>
       <p class="tagline">Configure le SSID, le mot de passe et l'activation WiFi d'un radio compagnon MeshCore, en Bluetooth ou en USB, directement depuis ce navigateur.</p>
     </div>
-    <span class="status-pill" id="statusPill" data-state="idle"><span class="dot"></span><span id="statusText">Non connecte</span></span>
+    <span class="status-pill" id="statusPill" data-state="idle"><span class="dot"></span><span id="statusText">Non connecté</span></span>
   </div>
 
   <div class="banner" id="compatBanner">
     <span class="glyph">i</span>
-    <div><strong>Chrome ou Edge requis</strong>, sur Windows ou Android. Safari (iOS/Mac) ne supporte ni le Bluetooth ni le port serie depuis un navigateur : aucun outil web ne peut le faire, ce n'est pas specifique a cette page.</div>
+    <div><strong>Chrome ou Edge requis</strong>, sur Windows ou Android. Safari (iOS/Mac) ne supporte ni le Bluetooth ni le port série depuis un navigateur : aucun outil web ne peut le faire, ce n'est pas spécifique à cette page.</div>
   </div>
 
   <div class="banner warn">
     <span class="glyph">!</span>
-    <div><strong>Firmware communautaire, pas officiel.</strong> Cette page ne parle qu'au build <code>DUAL_BLE_WIFI</code> (BLE + USB + WiFi simultanes) decrit dans le depot associe. Elle n'a aucun effet sur un firmware MeshCore standard. Solution de depannage en attendant qu'un firmware companion multi-transport soit propose officiellement en amont.</div>
+    <div><strong>Firmware communautaire, pas officiel.</strong> Cette page parle aux builds <code>DUAL_BLE_WIFI</code> (BLE + USB + WiFi simultanés) et <code>EXCLUSIVE_BLE_WIFI</code> (BLE ou WiFi, un seul actif à la fois, bascule par redémarrage) décrits dans le dépôt associé. Elle n'a aucun effet sur un firmware MeshCore standard. Solution de dépannage en attendant qu'un firmware companion multi-transport soit proposé officiellement en amont.</div>
   </div>
 
   <div class="grid">
@@ -354,16 +364,16 @@
     <div class="stack">
       <div class="card">
         <h2>Connexion</h2>
-        <p class="sub">Choisis le transport, puis autorise l'appareil dans la fenetre du navigateur.</p>
+        <p class="sub">Choisis le transport, puis autorise l'appareil dans la fenêtre du navigateur.</p>
         <div class="transport-row">
           <button class="primary" id="btnBle" type="button">Bluetooth</button>
           <button class="primary" id="btnUsb" type="button">USB</button>
         </div>
-        <button class="ghost full small" id="btnDisconnect" type="button" disabled>Deconnecter</button>
+        <button class="ghost full small" id="btnDisconnect" type="button" disabled>Déconnecter</button>
         <p class="unsupported-note" id="unsupportedNote" hidden></p>
 
         <dl class="kv" id="deviceInfo">
-          <dt colspan="2" class="kv-empty" style="grid-column: 1 / -1;">Aucun appareil connecte pour le moment.</dt>
+          <dt colspan="2" class="kv-empty" style="grid-column: 1 / -1;">Aucun appareil connecté pour le moment.</dt>
         </dl>
       </div>
     </div>
@@ -373,9 +383,9 @@
       <p class="sub">Le mot de passe n'est jamais relu depuis l'appareil : laisse le champ vide pour ne pas le changer.</p>
 
       <div class="field">
-        <label for="fSsid">Nom du reseau (SSID)</label>
+        <label for="fSsid">Nom du réseau (SSID)</label>
         <input type="text" id="fSsid" maxlength="31" placeholder="Connecte-toi d'abord" disabled>
-        <p class="hint"><span class="charcount" id="ssidCount">0</span> / 31 caracteres</p>
+        <p class="hint"><span class="charcount" id="ssidCount">0</span> / 31 caractères</p>
       </div>
 
       <div class="field">
@@ -384,17 +394,22 @@
           <input type="password" id="fPwd" maxlength="63" placeholder="Laisser vide pour ne pas changer" disabled>
           <button class="small" id="btnShowPwd" type="button" disabled>Afficher</button>
         </div>
-        <p class="hint"><span class="charcount" id="pwdCount">0</span> / 63 caracteres</p>
+        <p class="hint"><span class="charcount" id="pwdCount">0</span> / 63 caractères</p>
       </div>
 
       <div class="toggle-row">
         <input type="checkbox" id="fEnabled" disabled>
-        <label for="fEnabled">Activer le WiFi (rejoint le reseau au demarrage, bascule aussi possible depuis l'ecran de l'appareil)</label>
+        <label for="fEnabled">Activer le WiFi (rejoint le réseau au démarrage, bascule aussi possible depuis l'écran de l'appareil)</label>
       </div>
 
       <div class="form-actions">
-        <button class="ghost" id="btnRefresh" type="button" disabled>Lire les reglages actuels</button>
+        <button class="ghost" id="btnRefresh" type="button" disabled>Lire les réglages actuels</button>
         <button class="primary" id="btnSave" type="button" disabled>Enregistrer</button>
+      </div>
+
+      <div class="banner action" id="applyBanner" hidden style="margin-top: 16px; margin-bottom: 0;">
+        <p id="applyBannerText"></p>
+        <button class="primary full" id="btnReboot" type="button">Redémarrer maintenant</button>
       </div>
     </div>
 
@@ -409,7 +424,7 @@
   </div>
 
   <footer>
-    <div>Protocole : trames binaires du companion radio MeshCore (<code>CMD_SET_CUSTOM_VAR</code> / <code>CMD_GET_CUSTOM_VARS</code>), service BLE UART Nordic, framing serie par en-tete <code>&lt;</code>/<code>&gt;</code> + longueur. Aucune donnee ne quitte ce navigateur : tout se passe en direct entre cette page et l'appareil.</div>
+    <div>Protocole : trames binaires du companion radio MeshCore (<code>CMD_SET_CUSTOM_VAR</code> / <code>CMD_GET_CUSTOM_VARS</code>), service BLE UART Nordic, framing série par en-tête <code>&lt;</code>/<code>&gt;</code> + longueur. Aucune donnée ne quitte ce navigateur : tout se passe en direct entre cette page et l'appareil.</div>
     <div>Reference protocole : <a href="https://github.com/meshcore-dev/MeshCore/wiki/Companion-Radio-Protocol" target="_blank" rel="noopener">meshcore-dev/MeshCore wiki</a>.</div>
   </footer>
 
@@ -424,6 +439,7 @@
   var CHAR_RX_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"; // app writes here
   var CHAR_TX_UUID = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"; // app subscribes here (notify)
 
+  var CMD_REBOOT = 19;
   var CMD_DEVICE_QUERY = 22;
   var CMD_GET_CUSTOM_VARS = 40;
   var CMD_SET_CUSTOM_VAR = 41;
@@ -434,10 +450,10 @@
   var RESP_CODE_CUSTOM_VARS = 21;
 
   var ERR_NAMES = {
-    1: "commande non supportee",
+    1: "commande non supportée",
     2: "introuvable",
     3: "table pleine",
-    4: "etat invalide",
+    4: "état invalide",
     5: "erreur de stockage",
     6: "argument invalide"
   };
@@ -448,7 +464,8 @@
     bleDevice: null, bleRx: null,
     usbPort: null, usbReader: null, usbWriter: null,
     connected: false,
-    pending: null        // { resolve, reject, timer }
+    pending: null,       // { resolve, reject, timer }
+    lastKnownWifiEnabled: null   // last value read from the device (RESP_CODE_CUSTOM_VARS), null = unknown yet
   };
 
   var usbParse = { mode: "idle", len: 0, buf: [] };
@@ -463,6 +480,7 @@
     fSsid: $("fSsid"), fPwd: $("fPwd"), fEnabled: $("fEnabled"),
     btnShowPwd: $("btnShowPwd"), btnRefresh: $("btnRefresh"), btnSave: $("btnSave"),
     ssidCount: $("ssidCount"), pwdCount: $("pwdCount"),
+    applyBanner: $("applyBanner"), applyBannerText: $("applyBannerText"), btnReboot: $("btnReboot"),
     consoleEl: $("console"), btnClearLog: $("btnClearLog")
   };
 
@@ -546,7 +564,7 @@
 
   function renderDeviceInfo(info) {
     els.deviceInfo.innerHTML =
-      "<dt>Modele</dt><dd>" + escapeHtml(info.manufacturer || "?") + "</dd>" +
+      "<dt>Modèle</dt><dd>" + escapeHtml(info.manufacturer || "?") + "</dd>" +
       "<dt>Version</dt><dd>" + escapeHtml(info.version || "?") + "</dd>" +
       "<dt>Compilation</dt><dd>" + escapeHtml(info.buildDate || "?") + "</dd>";
   }
@@ -560,20 +578,35 @@
       pairs[chunk.slice(0, idx)] = chunk.slice(idx + 1);
     });
     if ("wifi_ssid" in pairs) els.fSsid.value = pairs.wifi_ssid;
-    if ("wifi_enabled" in pairs) els.fEnabled.checked = pairs.wifi_enabled === "1";
+    if ("wifi_enabled" in pairs) {
+      els.fEnabled.checked = pairs.wifi_enabled === "1";
+      state.lastKnownWifiEnabled = els.fEnabled.checked;
+    }
     els.ssidCount.textContent = els.fSsid.value.length;
+    hideApplyBanner();
+  }
+
+  // ---------------- apply banner (reboot needed or not) ----------------
+  function showApplyBanner(text, showRebootButton) {
+    els.applyBannerText.textContent = text;
+    els.btnReboot.hidden = !showRebootButton;
+    els.btnReboot.disabled = false;
+    els.applyBanner.hidden = false;
+  }
+  function hideApplyBanner() {
+    els.applyBanner.hidden = true;
   }
 
   // ---------------- request/response plumbing ----------------
   function sendAndWait(bytes, timeoutMs) {
     return new Promise(function (resolve, reject) {
-      if (state.pending) { reject(new Error("Une requete est deja en cours.")); return; }
+      if (state.pending) { reject(new Error("Une requête est déjà en cours.")); return; }
       state.pending = {
         resolve: resolve,
         reject: reject,
         timer: setTimeout(function () {
           state.pending = null;
-          reject(new Error("Pas de reponse (delai depasse)."));
+          reject(new Error("Pas de réponse (délai dépassé)."));
         }, timeoutMs || 5000)
       };
       transportSend(bytes).catch(function (e) {
@@ -586,7 +619,7 @@
   function transportSend(bytes) {
     if (state.transport === "ble") return sendBle(bytes);
     if (state.transport === "usb") return sendUsb(bytes);
-    return Promise.reject(new Error("Non connecte."));
+    return Promise.reject(new Error("Non connecté."));
   }
 
   // ---------------- BLE transport ----------------
@@ -618,7 +651,7 @@
         onConnected("Bluetooth");
       })
       .catch(function (e) {
-        log("Connexion Bluetooth annulee ou en echec : " + e.message, "err");
+        log("Connexion Bluetooth annulée ou en échec : " + e.message, "err");
       });
   }
 
@@ -630,13 +663,13 @@
   }
 
   function onBleDisconnected() {
-    if (state.transport === "ble") { log("Bluetooth deconnecte.", "err"); onDisconnected(); }
+    if (state.transport === "ble") { log("Bluetooth déconnecté.", "err"); onDisconnected(); }
   }
 
   // ---------------- USB (Web Serial) transport ----------------
   function connectUsb() {
     if (!navigator.serial) { log("Web Serial indisponible dans ce navigateur.", "err"); return; }
-    log("Demande de port serie...", "out");
+    log("Demande de port série...", "out");
     var port;
     navigator.serial.requestPort()
       .then(function (p) { port = p; return p.open({ baudRate: 115200 }); })
@@ -644,7 +677,7 @@
         state.usbPort = port;
         state.usbWriter = port.writable.getWriter();
         port.addEventListener("disconnect", function () {
-          if (state.transport === "usb") { log("USB debranche.", "err"); onDisconnected(); }
+          if (state.transport === "usb") { log("USB débranché.", "err"); onDisconnected(); }
         });
         usbParse = { mode: "idle", len: 0, buf: [] };
         readLoopUsb(port);
@@ -652,7 +685,7 @@
         onConnected("USB");
       })
       .catch(function (e) {
-        log("Connexion USB annulee ou en echec : " + e.message, "err");
+        log("Connexion USB annulée ou en échec : " + e.message, "err");
       });
   }
 
@@ -704,11 +737,11 @@
   // ---------------- connect / disconnect lifecycle ----------------
   function onConnected(label) {
     state.connected = true;
-    setStatus("Connecte (" + label + ")", "connected");
+    setStatus("Connecté (" + label + ")", "connected");
     els.btnDisconnect.disabled = false;
     els.btnBle.disabled = true; els.btnUsb.disabled = true;
     setFormEnabled(true);
-    log("Connexion " + label + " etablie.", "ok");
+    log("Connexion " + label + " établie.", "ok");
     queryAndRefresh();
   }
 
@@ -717,13 +750,15 @@
     state.transport = null;
     state.bleDevice = null; state.bleRx = null;
     state.usbPort = null; state.usbReader = null; state.usbWriter = null;
-    setStatus("Non connecte", "idle");
+    setStatus("Non connecté", "idle");
     els.btnDisconnect.disabled = true;
     els.btnBle.disabled = false; els.btnUsb.disabled = false;
     setFormEnabled(false);
-    els.deviceInfo.innerHTML = '<dt colspan="2" class="kv-empty" style="grid-column: 1 / -1;">Aucun appareil connecte pour le moment.</dt>';
+    els.deviceInfo.innerHTML = '<dt colspan="2" class="kv-empty" style="grid-column: 1 / -1;">Aucun appareil connecté pour le moment.</dt>';
     els.fSsid.value = ""; els.fPwd.value = ""; els.fEnabled.checked = false;
     els.ssidCount.textContent = "0"; els.pwdCount.textContent = "0";
+    state.lastKnownWifiEnabled = null;
+    hideApplyBanner();
   }
 
   function disconnect() {
@@ -737,14 +772,14 @@
         .catch(function () {});
     }
     onDisconnected();
-    log("Deconnecte.", "info");
+    log("Déconnecté.", "info");
   }
 
   function queryAndRefresh() {
     setStatus("Lecture...", "busy");
     sendAndWait(new Uint8Array([CMD_DEVICE_QUERY, 3]))
       .then(function () { return sendAndWait(new Uint8Array([CMD_GET_CUSTOM_VARS])); })
-      .then(function () { setStatus("Connecte (" + (state.transport === "ble" ? "Bluetooth" : "USB") + ")", "connected"); })
+      .then(function () { setStatus("Connecté (" + (state.transport === "ble" ? "Bluetooth" : "USB") + ")", "connected"); })
       .catch(function (e) { log("Lecture impossible : " + e.message, "err"); setStatus("Connecte", "connected"); });
   }
 
@@ -752,9 +787,12 @@
   function saveSettings() {
     var ssid = els.fSsid.value;
     var pwd = els.fPwd.value;
-    var enabled = els.fEnabled.checked ? "1" : "0";
+    var ssidOrPwdChanged = ssid.length > 0 || pwd.length > 0;
+    var newEnabled = els.fEnabled.checked;
+    var oldEnabled = state.lastKnownWifiEnabled;   // null = never read from the device yet
 
     els.btnSave.disabled = true;
+    hideApplyBanner();
     setStatus("Enregistrement...", "busy");
 
     var chain = Promise.resolve();
@@ -764,15 +802,59 @@
     if (pwd.length > 0) {
       chain = chain.then(function () { return sendAndWait(textFrame(CMD_SET_CUSTOM_VAR, "wifi_pwd:" + pwd)); });
     }
-    chain = chain.then(function () { return sendAndWait(textFrame(CMD_SET_CUSTOM_VAR, "wifi_enabled:" + enabled)); });
+    chain = chain.then(function () { return sendAndWait(textFrame(CMD_SET_CUSTOM_VAR, "wifi_enabled:" + (newEnabled ? "1" : "0"))); });
 
     chain
       .then(function () {
-        log("Reglages enregistres. Bascule a chaud possible depuis la page WIFI de l'ecran, ou au prochain redemarrage.", "ok");
+        log("Réglages enregistrés.", "ok");
         els.fPwd.value = ""; els.pwdCount.textContent = "0";
+        state.lastKnownWifiEnabled = newEnabled;
+
+        // Un redémarrage est réellement nécessaire dans ces cas (rien, dans ce
+        // firmware, ne relit le SSID/mot de passe ou ne bascule de radio sans
+        // redémarrer) :
+        //  - le mode BLE/WiFi change (case cochée/décochée par rapport à ce
+        //    qui était su avant cet enregistrement),
+        //  - ou le WiFi reste le mode actif et le SSID/mot de passe vient
+        //    d'être modifié (la connexion en cours ne relit jamais les
+        //    nouveaux identifiants toute seule).
+        // Si le WiFi reste désactivé (BLE actif avant et après), rien à
+        // redémarrer maintenant : les identifiants seront simplement utilisés
+        // au prochain passage en WiFi.
+        var modeChanged = (oldEnabled !== null) && (oldEnabled !== newEnabled);
+        var needsReboot = modeChanged || (newEnabled && ssidOrPwdChanged) || (newEnabled && oldEnabled === null);
+
+        if (needsReboot) {
+          showApplyBanner(
+            "Redémarrage nécessaire pour appliquer ce changement (" +
+            (modeChanged ? (newEnabled ? "passage au WiFi" : "retour au BLE") : "reconnexion avec le SSID/mot de passe modifié") +
+            "). Rien n'est actif tant que ce n'est pas fait.",
+            true
+          );
+        } else {
+          showApplyBanner(
+            "WiFi désactivé : aucun redémarrage nécessaire pour l'instant. Ces identifiants seront utilisés à la prochaine activation du WiFi. Attention : une erreur de SSID ou de mot de passe ne peut être détectée qu'à ce moment-là, il n'y a pas de vérification immédiate sans redémarrer.",
+            false
+          );
+        }
       })
-      .catch(function (e) { log("Echec de l'enregistrement : " + e.message, "err"); })
-      .then(function () { els.btnSave.disabled = false; setStatus("Connecte (" + (state.transport === "ble" ? "Bluetooth" : "USB") + ")", "connected"); });
+      .catch(function (e) { log("Échec de l'enregistrement : " + e.message, "err"); })
+      .then(function () { els.btnSave.disabled = false; setStatus("Connecté (" + (state.transport === "ble" ? "Bluetooth" : "USB") + ")", "connected"); });
+  }
+
+  function rebootDevice() {
+    els.btnReboot.disabled = true;
+    log("Redémarrage demandé.", "out");
+    transportSend(textFrame(CMD_REBOOT, "reboot"))
+      .then(function () {
+        log("Commande envoyée. L'appareil redémarre, la connexion va se couper.", "info");
+      })
+      .catch(function (e) {
+        log("Échec de l'envoi : " + e.message, "err");
+        els.btnReboot.disabled = false;
+      });
+    // Pas de sendAndWait ici : board.reboot() coupe la carte directement,
+    // sans jamais répondre. Le firmware n'envoie aucune trame après ça.
   }
 
   // ---------------- wire up ----------------
@@ -782,10 +864,11 @@
   els.btnRefresh.addEventListener("click", function () {
     setStatus("Lecture...", "busy");
     sendAndWait(new Uint8Array([CMD_GET_CUSTOM_VARS]))
-      .then(function () { setStatus("Connecte (" + (state.transport === "ble" ? "Bluetooth" : "USB") + ")", "connected"); })
+      .then(function () { setStatus("Connecté (" + (state.transport === "ble" ? "Bluetooth" : "USB") + ")", "connected"); })
       .catch(function (e) { log("Lecture impossible : " + e.message, "err"); setStatus("Connecte", "connected"); });
   });
   els.btnSave.addEventListener("click", saveSettings);
+  els.btnReboot.addEventListener("click", rebootDevice);
 
   // ---------------- capability check ----------------
   var hasBle = !!navigator.bluetooth;
@@ -803,6 +886,6 @@
     els.unsupportedNote.textContent = "Bluetooth indisponible dans ce navigateur (Web Bluetooth). L'USB reste utilisable.";
   }
 
-  log("Page prete. " + (hasBle ? "Bluetooth " : "") + (hasUsb ? "USB " : "") + "disponible(s) dans ce navigateur.", "info");
+  log("Page prête. " + (hasBle ? "Bluetooth " : "") + (hasUsb ? "USB " : "") + "disponible(s) dans ce navigateur.", "info");
 })();
 </script>

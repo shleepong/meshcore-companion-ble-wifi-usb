@@ -25,19 +25,25 @@ n'aura plus lieu d'être maintenu séparément.
 | Board | Statut |
 |---|---|
 | Heltec V4 / V4.3 | Testé sur matériel réel (voir `firmware/heltec_v4/`) |
-| Heltec Wireless Tracker V2 | Compile, jamais testé sur matériel réel |
+| Heltec Wireless Tracker V2 | Démarre sur matériel réel, configuration WiFi en cours de validation (voir `firmware/heltec_tracker_v2/`) |
 
 ## Utilisation rapide
 
 1. **Flasher** : `firmware/<board>/firmware-merged.bin` (board neuve, à l'offset `0x0`,
    efface tout) ou `firmware.bin` (mise à jour d'un board déjà sous MeshCore, via
    [meshcore.io/flasher](https://meshcore.io/flasher) ou en série).
-2. **Configurer le WiFi** : ouvrir la page de configuration hébergée par ce dépôt
-   (lien GitHub Pages, à ajouter une fois activé), en Bluetooth ou en USB, aucune
-   installation requise (Chrome ou Edge, Windows ou Android ; Safari/iOS non
-   supporté, restriction du navigateur, pas de ce firmware). Alternative en ligne de
-   commande : [`meshcore-cli`](https://github.com/meshcore-dev/meshcore-cli),
-   voir `set wifi_ssid` / `set wifi_pwd` / `set wifi_enabled`.
+2. **Configurer le WiFi** : ouvrir la [page de configuration](https://shleepong.github.io/meshcore-companion-ble-wifi-usb/)
+   hébergée par ce dépôt, en Bluetooth ou en USB, aucune installation requise
+   (Chrome ou Edge, Windows ou Android ; Safari/iOS non supporté, restriction du
+   navigateur, pas de ce firmware). **Code d'appairage Bluetooth : celui affiché
+   sur la page d'accueil de l'écran** (`Pin:XXXXXX`), différent à chaque
+   démarrage, pas une valeur fixe. Ce code ne sert qu'au tout premier
+   appairage : une fois l'appareil apparié, Windows/Android le reconnaît
+   automatiquement aux connexions suivantes (y compris après une mise à jour
+   du firmware) sans redemander de code, tant que l'appairage n'a pas été
+   supprimé manuellement côté PC/téléphone. Alternative en ligne de commande :
+   [`meshcore-cli`](https://github.com/meshcore-dev/meshcore-cli), voir
+   `set wifi_ssid` / `set wifi_pwd` / `set wifi_enabled`.
 3. **Basculer le WiFi au quotidien** : page "WIFI" sur l'écran de l'appareil, appui
    long sur le bouton.
 
