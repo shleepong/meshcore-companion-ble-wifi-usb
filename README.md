@@ -28,6 +28,8 @@ connexion. Plutôt que de maintenir deux mécanismes différents selon la board,
 mode exclusif (`EXCLUSIVE_BLE_WIFI`) est désormais proposé et maintenu, sur les deux
 boards.
 
+---
+
 ## Ce que ça apporte
 
 - **BLE actif dès le premier démarrage**, comme n'importe quel companion classique.
@@ -99,6 +101,8 @@ par-dessus le code officiel.
 
 *(Pour info : ce dépôt est développé avec Claude Code (Anthropic), en s'appuyant sur
 le dépôt officiel MeshCore et le travail qui y est fait.)*
+
+---
 
 **Workaround, not an official project.** This repository exists because no
 multi-transport companion firmware is offered upstream yet. The native support
