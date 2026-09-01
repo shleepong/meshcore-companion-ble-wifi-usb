@@ -1,9 +1,5 @@
 # MeshCore Companion : BLE ou WiFi (exclusif) + USB
 
-<p align="center">
-  <img src="docs/screen-v4-wifi.jpg" alt="Heltec V4 affichant WiFi actif et son adresse IP">
-</p>
-
 ---
 
 Firmware communautaire pour le rôle Companion de [MeshCore](https://github.com/meshcore-dev/MeshCore),
@@ -18,6 +14,10 @@ by a full reboot; USB stays available either way. WiFi settings are configurable
 through a web page, no installation required.
 
 ---
+
+<p align="center">
+  <img src="docs/WT2_WiFi-on.jpg" alt="Wireless Tracker V2 affichant WiFi actif et son adresse IP">
+</p>
 
 **Solution de dépannage, pas un projet officiel.** Ce dépôt existe parce qu'aucun
 firmware companion multi-transport n'est encore proposé en amont. Le support natif
@@ -107,6 +107,10 @@ par-dessus le code officiel.
 le dépôt officiel MeshCore et le travail qui y est fait.)*
 
 ---
+
+<p align="center">
+  <img src="docs/V43_WiFi-on.jpg" alt="Heltec V4.3 showing WiFi active and its IP address">
+</p>
 
 **Workaround, not an official project.** This repository exists because no
 multi-transport companion firmware is offered upstream yet. The native support
