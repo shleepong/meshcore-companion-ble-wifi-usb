@@ -59,6 +59,9 @@ boards.
 
 ## Utilisation rapide
 
+Un [guide](docs/INSTALL.pdf) d'installation plus détaillé (captures, dépannage)
+est disponible dans `docs/`.
+
 1. **Flasher** : `firmware/<board>/firmware-merged.bin` (board neuve, à l'offset `0x0`,
    efface tout) ou `firmware.bin` (mise à jour d'un board déjà sous MeshCore, via
    [meshcore.io/flasher](https://meshcore.io/flasher) ou en série).
@@ -151,6 +154,9 @@ maintaining two different mechanisms depending on the board, only the exclusive 
 | Heltec Wireless Tracker V2 | Tested on real hardware, BLE/WiFi switch cycle validated (see `firmware/heltec_tracker_v2/`) |
 
 ## Quick start
+
+A more detailed installation [guide](docs/INSTALL.pdf) (screenshots,
+troubleshooting) is available in `docs/`.
 
 1. **Flash**: `firmware/<board>/firmware-merged.bin` (new board, at offset `0x0`,
    erases everything) or `firmware.bin` (updating a board already running MeshCore,
