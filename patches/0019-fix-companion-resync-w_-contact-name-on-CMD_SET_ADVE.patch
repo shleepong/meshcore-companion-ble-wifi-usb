@@ -1,0 +1,36 @@
+From 803961058f907c5dfacfac577fb51ba302404104 Mon Sep 17 00:00:00 2001
+From: GNB Build <palimpseste@quidam.eu>
+Date: Tue, 1 Sep 2026 23:01:52 +0200
+Subject: [PATCH 19/22] fix(companion): resync "w_" contact name on
+ CMD_SET_ADVERT_NAME too
+
+ensureWifiConfigContact() only ran once at boot, so renaming the node
+through the app after that (CMD_SET_ADVERT_NAME) left the contact stuck
+on the old "w_<old name>" until the next reboot -- confirmed on real WT2
+hardware during first-connection testing (name set during onboarding,
+saved, contact still showed the previous name). Call it again right
+after savePrefs() in that handler so the rename is reflected immediately.
+---
+ examples/companion_radio/MyMesh.cpp | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/examples/companion_radio/MyMesh.cpp b/examples/companion_radio/MyMesh.cpp
+index b44c1f79..f8bf790a 100644
+--- a/examples/companion_radio/MyMesh.cpp
++++ b/examples/companion_radio/MyMesh.cpp
+@@ -1373,6 +1373,12 @@ void MyMesh::handleCmdFrame(size_t len) {
+     memcpy(_prefs.node_name, &cmd_frame[1], nlen);
+     _prefs.node_name[nlen] = 0; // null terminator
+     savePrefs();
++#if defined(DUAL_BLE_WIFI) || defined(EXCLUSIVE_BLE_WIFI)
++    // Re-sync "w_<node name>" right away -- ensureWifiConfigContact() only
++    // ran once at boot, so without this a rename here would leave the
++    // contact stuck on the old name until the next reboot.
++    ensureWifiConfigContact();
++#endif
+     writeOKFrame();
+   } else if (cmd_frame[0] == CMD_SET_ADVERT_LATLON && len >= 9) {
+     int32_t lat, lon, alt = 0;
+-- 
+2.53.0.windows.2
+

@@ -1,0 +1,52 @@
+From ea567b5a39bab921ba8dd435569471e643be2442 Mon Sep 17 00:00:00 2001
+From: GNB Build <palimpseste@quidam.eu>
+Date: Wed, 2 Sep 2026 06:20:27 +0200
+Subject: [PATCH 22/22] fix(companion): tolerate phone auto-capitalized first
+ letter on "w_" contact
+
+Reported real-world friction: phone keyboards auto-capitalize the first
+letter of a new message by default, so typing "reboot" or
+"wifi_ssid:MyNetwork" without manually switching back to lower-case first
+arrives as "Reboot"/"Wifi_ssid:..." and fails to match. Lower-case just
+that one leading character before any comparison -- never anything past
+it, so a value like a WiFi password keeps whatever case was actually
+typed (only the fixed keyword/key portion is ever affected).
+---
+ examples/companion_radio/MyMesh.cpp | 21 ++++++++++++++++-----
+ 1 file changed, 16 insertions(+), 5 deletions(-)
+
+diff --git a/examples/companion_radio/MyMesh.cpp b/examples/companion_radio/MyMesh.cpp
+index 8fd16573..bf6ffee4 100644
+--- a/examples/companion_radio/MyMesh.cpp
++++ b/examples/companion_radio/MyMesh.cpp
+@@ -1224,11 +1224,22 @@ void MyMesh::handleCmdFrame(size_t len) {
+       uint32_t expected_ack;
+ #if defined(DUAL_BLE_WIFI) || defined(EXCLUSIVE_BLE_WIFI)
+       if (isWifiConfigContact(recipient) && tlen <= MAX_TEXT_LEN) {
+-        // Local WiFi-config contact -- never touches the radio. Fabricate the
+-        // same SENT-ack hash a real send would produce (composeMsgPacket(),
+-        // BaseChatMesh.cpp) from the UNMODIFIED text, before splitting it on
+-        // ':' below, so the app can never conclude the message was lost and
+-        // retry it.
++        // Local WiFi-config contact -- never touches the radio.
++        //
++        // Phone keyboards auto-capitalize the first letter of a new message
++        // by default, so "reboot"/"wifi_ssid:..." typed without manually
++        // switching back to lower-case arrive as "Reboot"/"Wifi_ssid:...".
++        // Normalize just that one leading character before anything below
++        // reads it -- never anything past it, so a value like a WiFi
++        // password keeps whatever case the user actually typed.
++        if (tlen > 0 && text[0] >= 'A' && text[0] <= 'Z') {
++          text[0] += ('a' - 'A');
++        }
++
++        // Fabricate the same SENT-ack hash a real send would produce
++        // (composeMsgPacket(), BaseChatMesh.cpp) from this (now normalized)
++        // text, before splitting it on ':' below, so the app can never
++        // conclude the message was lost and retry it.
+         uint8_t temp[5 + MAX_TEXT_LEN + 1];
+         memcpy(temp, &msg_timestamp, 4);
+         temp[4] = (attempt & 3);
+-- 
+2.53.0.windows.2
+

@@ -1,0 +1,74 @@
+From 50f79c8e01f9c5e69d37322654fe4049d33698ad Mon Sep 17 00:00:00 2001
+From: GNB Build <palimpseste@quidam.eu>
+Date: Wed, 2 Sep 2026 06:05:20 +0200
+Subject: [PATCH 21/22] feat(companion): add "reboot" keyword to the "w_"
+ contact chat
+
+Deliberately narrow addition, requested explicitly as the only extra
+command to expose this way (everything else stays app-only): sending the
+literal text "reboot" to the WiFi-config contact now reboots the node,
+same exact-match convention and same effect as the binary CMD_REBOOT
+command (flush any pending dirty-contacts write via saveContacts(), then
+board.reboot()). Lets the whole WiFi setup sequence (wifi_ssid/wifi_pwd/
+wifi_enabled/reboot) happen through chat alone, e.g. scripted via
+meshcore-cli, without needing the app's own reboot button.
+
+No other command added -- key:value parsing still only recognizes
+wifi_ssid/wifi_pwd/wifi_enabled, everything else continues to go through
+the app as before.
+---
+ examples/companion_radio/MyMesh.cpp | 30 ++++++++++++++++++++++++-----
+ 1 file changed, 25 insertions(+), 5 deletions(-)
+
+diff --git a/examples/companion_radio/MyMesh.cpp b/examples/companion_radio/MyMesh.cpp
+index c2163b17..8fd16573 100644
+--- a/examples/companion_radio/MyMesh.cpp
++++ b/examples/companion_radio/MyMesh.cpp
+@@ -1236,12 +1236,23 @@ void MyMesh::handleCmdFrame(size_t len) {
+         mesh::Utils::sha256((uint8_t *)&expected_ack, 4, temp, 5 + tlen, self_id.pub_key, PUB_KEY_SIZE);
+ 
+         char reply[48];
+-        char *sep = strchr(text, ':');
+-        if (sep) {
+-          *sep++ = 0;
+-          trySetWifiConfigVar(text, sep, reply, sizeof(reply));
++        // Deliberately narrow scope: only "key:value" (wifi_ssid/wifi_pwd/
++        // wifi_enabled) and this one literal keyword. Same exact-match
++        // convention as the binary CMD_REBOOT ("reboot" as its own
++        // confirmation, not a prefix/case-insensitive match) -- no other
++        // command is exposed here, everything else stays reachable only
++        // through the app itself.
++        bool do_reboot = (strcmp(text, "reboot") == 0);
++        if (do_reboot) {
++          StrHelper::strzcpy(reply, "OK rebooting", sizeof(reply));
+         } else {
+-          StrHelper::strzcpy(reply, "ERR use key:value (wifi_ssid/wifi_pwd/wifi_enabled)", sizeof(reply));
++          char *sep = strchr(text, ':');
++          if (sep) {
++            *sep++ = 0;
++            trySetWifiConfigVar(text, sep, reply, sizeof(reply));
++          } else {
++            StrHelper::strzcpy(reply, "ERR use key:value (wifi_ssid/wifi_pwd/wifi_enabled) or 'reboot'", sizeof(reply));
++          }
+         }
+ 
+         out_frame[0] = RESP_CODE_SENT;
+@@ -1260,6 +1271,15 @@ void MyMesh::handleCmdFrame(size_t len) {
+         _serial->writeFrame(out_frame, 9);
+ 
+         queueLocalConfigReply(*recipient, getRTCClock()->getCurrentTimeUnique(), reply);
++
++        if (do_reboot) {
++          // Same effect as CMD_REBOOT (MyMesh.cpp, binary command 19): flush
++          // any pending contacts write, then reboot. Doesn't return.
++          if (dirty_contacts_expiry) {
++            saveContacts();
++          }
++          board.reboot();
++        }
+         return;
+       }
+ #endif
+-- 
+2.53.0.windows.2
+

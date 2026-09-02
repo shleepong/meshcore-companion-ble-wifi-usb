@@ -38,6 +38,11 @@ patch par patch, en résolvant à la main, fonctionne aussi.)
 | `0015-...battery-percentage-instead-of-icon...patch` | Remplace l'icône de batterie par un pourcentage en texte, ajoute une page BATTERY dédiée (tension, plage de référence). |
 | `0016-...defer-WiFi.mode-to-the-WiFi-branch-only...patch` | Corrige un blocage total au démarrage sur le Wireless Tracker V2 : `WiFi.mode()` était appelé avant l'initialisation Bluetooth même en repli BLE, ce qui bloquait cette dernière sur cette board (jamais affecté le V4.3). |
 | `0017-...add-accent_cyan-color...patch` | Ajoute une couleur cyan dédiée pour le texte d'état "on" des pages BLUETOOTH/WIFI sur les écrans couleur (l'ancienne couleur, un bleu marine très foncé, était peu lisible sur le Wireless Tracker V2). |
+| `0018-...add-local-WiFi-config-contact-w_-node...patch` | Ajoute un contact local `w_<nom du nœud>` : configurer `wifi_ssid`/`wifi_pwd`/`wifi_enabled` en lui envoyant un message de chat, sans jamais émettre sur la radio LoRa (interception avant tout envoi réel, clé publique synthétique dérivée par hachage de l'identité propre). |
+| `0019-...resync-w_-contact-name-on-CMD_SET_ADVERT_NAME...patch` | Resynchronise le nom du contact `w_` si le nœud est renommé après sa création (sinon il restait bloqué sur l'ancien nom). |
+| `0020-...push-PATH_UPDATED-after-a-w_-contact-rename...patch` | Corrige le rafraîchissement du nom côté app : sans ça, une app déjà connectée ne voyait le nouveau nom qu'après une déconnexion/reconnexion. |
+| `0021-...add-reboot-keyword-to-the-w_-contact...patch` | Ajoute la commande `reboot` (texte exact) au contact `w_`, en plus de `wifi_ssid`/`wifi_pwd`/`wifi_enabled` : permet d'enchaîner toute la configuration WiFi par chat, y compris le redémarrage nécessaire pour l'appliquer. |
+| `0022-...tolerate-phone-auto-capitalized-first...patch` | Tolère la majuscule automatique du clavier des smartphones sur la première lettre d'un message (`Reboot`, `Wifi_ssid:...`), sans affecter la casse du reste du message (valeurs comme un mot de passe WiFi inchangées). |
 
 Chaque message de commit détaille la cause du bug et comment il a été confirmé
 (souvent sur matériel réel). Voir directement le contenu des patchs pour le détail
@@ -46,12 +51,14 @@ technique complet.
 Les patchs `0001` à `0007` ajoutent le mode `DUAL_BLE_WIFI` (BLE et WiFi actifs en
 même temps), qui reste présent dans le code mais n'est plus proposé ni maintenu
 (voir la note historique du README principal). Les patchs `0008` à `0017` ajoutent
-le mode `EXCLUSIVE_BLE_WIFI`, seul mode désormais distribué par ce dépôt.
+le mode `EXCLUSIVE_BLE_WIFI`, seul mode désormais distribué par ce dépôt. Les
+patchs `0018` à `0022` ajoutent le contact `w_` (configuration WiFi par chat, sans
+radio) au-dessus du mode `EXCLUSIVE_BLE_WIFI`.
 
-Vérifié le 30/08/2026 : les 17 patchs s'appliquent sans conflit sur une copie
+Vérifié le 02/09/2026 : les 22 patchs s'appliquent sans conflit sur une copie
 fraîche du tag `companion-v1.17.1` (`git am`), le résultat reproduit exactement
-(fichier pour fichier) l'état actuel du dépôt source pour les fichiers
-concernés, et compile avec succès pour les deux boards
+(fichier pour fichier, diff complet du dépôt) l'état actuel du dépôt source, et
+compile avec succès pour les deux boards
 (`heltec_v4_companion_radio_ble_wifi_exclusive` et
 `heltec_tracker_v2_companion_radio_ble_wifi_exclusive`), avec la même
 utilisation RAM/Flash que les binaires précompilés fournis dans ce dépôt.

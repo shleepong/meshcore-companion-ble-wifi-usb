@@ -1,0 +1,291 @@
+From 403bbd059726c5a7629243c52db49737839aa2b8 Mon Sep 17 00:00:00 2001
+From: GNB Build <palimpseste@quidam.eu>
+Date: Tue, 1 Sep 2026 22:29:23 +0200
+Subject: [PATCH 18/22] feat(companion): add local WiFi-config contact
+ ("w_<node name>")
+
+Lets a companion app configure wifi_ssid/wifi_pwd/wifi_enabled via an
+ordinary chat message to a synthetic contact named "w_<node name>", using
+the existing "key:value" syntax already used by CMD_SET_CUSTOM_VAR
+(wifi_ssid:MyNetwork, wifi_pwd:..., wifi_enabled:1). Never touches the
+radio: intercepted in the CMD_SEND_TXT_MSG handler right after the
+(successful) contact lookup, before any sendMessage()/sendCommandData()
+call.
+
+Same underlying principle as ZephCore's v-contact (synthetic pubkey
+derived by hashing our own identity, so nothing is ever actually sent
+over LoRa), adapted to this codebase: since BaseChatMesh's contact table
+has no virtual-injection hook, the contact is a genuine addContact()
+entry instead, ensured idempotently at every boot (ensureWifiConfigContact,
+called right after loadContacts() in begin()), including keeping its
+display name in sync if the node is renamed later.
+
+- MyMesh.h: new private members (_wifi_contact_key, ensureWifiConfigContact,
+  isWifiConfigContact, trySetWifiConfigVar, queueLocalConfigReply), all
+  gated by DUAL_BLE_WIFI/EXCLUSIVE_BLE_WIFI like the existing wifi_ssid/
+  wifi_pwd/wifi_enabled handling.
+- MyMesh.cpp: the three new functions; CMD_SET_CUSTOM_VAR's existing
+  wifi_ssid/wifi_pwd/wifi_enabled branch now calls the shared
+  trySetWifiConfigVar() instead of duplicating the field-set logic;
+  CMD_SEND_TXT_MSG fabricates the same SENT-ack hash a real send would
+  produce (from the untouched text, before splitting on ':'), plus an
+  immediate PUSH_CODE_SEND_CONFIRMED (nothing is ever in flight to wait
+  for), then queues a local reply via queueLocalConfigReply() (mirrors
+  queueMessage() without dereferencing a real mesh::Packet*).
+
+Status: compiles clean for heltec_tracker_v2_companion_radio_ble_wifi_exclusive
+(RAM 63.0%, Flash 51.2%). Never flashed or tested on real hardware yet --
+beta build in builds/beta-releases/, not builds/releases/.
+---
+ examples/companion_radio/MyMesh.cpp | 175 +++++++++++++++++++++++++---
+ examples/companion_radio/MyMesh.h   |  20 ++++
+ 2 files changed, 182 insertions(+), 13 deletions(-)
+
+diff --git a/examples/companion_radio/MyMesh.cpp b/examples/companion_radio/MyMesh.cpp
+index a0f0ddd1..b44c1f79 100644
+--- a/examples/companion_radio/MyMesh.cpp
++++ b/examples/companion_radio/MyMesh.cpp
+@@ -476,6 +476,120 @@ void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packe
+ #endif
+ }
+ 
++#if defined(DUAL_BLE_WIFI) || defined(EXCLUSIVE_BLE_WIFI)
++void MyMesh::ensureWifiConfigContact() {
++  // Synthetic pubkey derived from our own identity (same principle as
++  // ZephCore's deriveVContactKey(), distinct salt so the two never collide).
++  // No matching private key exists anywhere -- a hand-crafted over-the-air
++  // packet addressed to it is undecryptable and dropped like any other noise,
++  // and it is never used to compute a real shared secret since sendMessage()/
++  // sendCommandData() are never called for it (see the CMD_SEND_TXT_MSG
++  // interception below).
++  static const char SALT[] = "d17-wifi-config-contact";
++  mesh::Utils::sha256(_wifi_contact_key, PUB_KEY_SIZE, (const uint8_t *)SALT, strlen(SALT),
++                       self_id.pub_key, PUB_KEY_SIZE);
++
++  char want_name[32];
++  want_name[0] = 'w';
++  want_name[1] = '_';
++  StrHelper::strzcpy(&want_name[2], _prefs.node_name, sizeof(want_name) - 2);
++
++  ContactInfo *existing = lookupContactByPubKey(_wifi_contact_key, PUB_KEY_SIZE);
++  if (existing) {
++    // Keep the display name in sync with the node name (a persisted contact
++    // doesn't get this for free the way ZephCore's read-time-rebuilt v-contact
++    // does -- a rename would otherwise leave a stale "w_<old name>" forever).
++    if (strcmp(existing->name, want_name) != 0) {
++      StrHelper::strzcpy(existing->name, want_name, sizeof(existing->name));
++      existing->lastmod = getRTCClock()->getCurrentTime();
++      saveContacts();
++    }
++    return; // already present, nothing more to do
++  }
++
++  ContactInfo c;
++  memset(&c, 0, sizeof(c));
++  memcpy(c.id.pub_key, _wifi_contact_key, PUB_KEY_SIZE);
++  c.type = ADV_TYPE_CHAT;
++  c.out_path_len = 0; // "0 hops" -- local, not a real routed contact
++  StrHelper::strzcpy(c.name, want_name, sizeof(c.name));
++  uint32_t now = getRTCClock()->getCurrentTime();
++  c.last_advert_timestamp = now;
++  c.lastmod = now;
++
++  if (addContact(c)) {
++    saveContacts();
++  }
++  // If the table happened to be full, we just retry next boot -- harmless.
++}
++
++bool MyMesh::trySetWifiConfigVar(const char* key, const char* value, char* reply, size_t reply_size) {
++  bool ok = true;
++  if (strcmp(key, "wifi_ssid") == 0) {
++    StrHelper::strncpy(_prefs.wifi_ssid, value, sizeof(_prefs.wifi_ssid));
++    if (reply) {
++      char *dp = reply;
++      strcpy(dp, "OK wifi_ssid=");
++      dp = strchr(dp, 0);
++      StrHelper::strzcpy(dp, _prefs.wifi_ssid, reply_size - (dp - reply));
++    }
++  } else if (strcmp(key, "wifi_pwd") == 0) {
++    StrHelper::strncpy(_prefs.wifi_password, value, sizeof(_prefs.wifi_password));
++    if (reply) StrHelper::strzcpy(reply, "OK wifi_pwd set", reply_size);
++  } else if (strcmp(key, "wifi_enabled") == 0) {
++    _prefs.wifi_enabled = (value[0] == '1') ? 1 : 0;
++    if (reply) {
++      StrHelper::strzcpy(reply, _prefs.wifi_enabled ? "OK wifi_enabled=1 (reboot to apply)"
++                                                     : "OK wifi_enabled=0 (reboot to apply)",
++                          reply_size);
++    }
++  } else {
++    ok = false;
++    if (reply) {
++      char *dp = reply;
++      strcpy(dp, "ERR unknown key: ");
++      dp = strchr(dp, 0);
++      StrHelper::strzcpy(dp, key, reply_size - (dp - reply));
++    }
++  }
++  if (ok) savePrefs();
++  return ok;
++}
++
++void MyMesh::queueLocalConfigReply(const ContactInfo &from, uint32_t sender_timestamp, const char *text) {
++  // Mirrors queueMessage()'s frame layout, but there is no real mesh::Packet
++  // behind this reply (it never travelled over the radio), so SNR is fixed to
++  // 0 and path_len to 0xFF ("direct"), same convention queueMessage() already
++  // uses for a directly-received (non-flooded) message.
++  int i = 0;
++  if (app_target_ver >= 3) {
++    out_frame[i++] = RESP_CODE_CONTACT_MSG_RECV_V3;
++    out_frame[i++] = 0; // SNR
++    out_frame[i++] = 0; // reserved1
++    out_frame[i++] = 0; // reserved2
++  } else {
++    out_frame[i++] = RESP_CODE_CONTACT_MSG_RECV;
++  }
++  memcpy(&out_frame[i], from.id.pub_key, 6);
++  i += 6;
++  out_frame[i++] = 0xFF; // path_len: direct
++  out_frame[i++] = TXT_TYPE_PLAIN;
++  memcpy(&out_frame[i], &sender_timestamp, 4);
++  i += 4;
++  int tlen = strlen(text);
++  if (i + tlen > MAX_FRAME_SIZE) tlen = MAX_FRAME_SIZE - i;
++  memcpy(&out_frame[i], text, tlen);
++  i += tlen;
++  addToOfflineQueue(out_frame, i);
++
++  if (_serial->isConnected()) {
++    uint8_t frame[1];
++    frame[0] = PUSH_CODE_MSG_WAITING; // send push 'tickle'
++    _serial->writeFrame(frame, 1);
++  }
++}
++#endif
++
+ bool MyMesh::filterRecvFloodPacket(mesh::Packet* packet) {
+   // REVISIT: try to determine which Region (from transport_codes[1]) that Sender is indicating for replies/responses
+   //    if unknown, fallback to finding Region from transport_codes[0], the 'scope' used by Sender
+@@ -970,6 +1084,9 @@ void MyMesh::begin(bool has_display) {
+   resetContacts();
+   _store->loadContacts(this);
+   bootstrapRTCfromContacts();
++#if defined(DUAL_BLE_WIFI) || defined(EXCLUSIVE_BLE_WIFI)
++  ensureWifiConfigContact();
++#endif
+   addChannel("Public", PUBLIC_GROUP_PSK); // pre-configure Andy's public channel
+   _store->loadChannels(this);
+ 
+@@ -1099,6 +1216,47 @@ void MyMesh::handleCmdFrame(size_t len) {
+       text[tlen] = 0; // ensure null
+       int result;
+       uint32_t expected_ack;
++#if defined(DUAL_BLE_WIFI) || defined(EXCLUSIVE_BLE_WIFI)
++      if (isWifiConfigContact(recipient) && tlen <= MAX_TEXT_LEN) {
++        // Local WiFi-config contact -- never touches the radio. Fabricate the
++        // same SENT-ack hash a real send would produce (composeMsgPacket(),
++        // BaseChatMesh.cpp) from the UNMODIFIED text, before splitting it on
++        // ':' below, so the app can never conclude the message was lost and
++        // retry it.
++        uint8_t temp[5 + MAX_TEXT_LEN + 1];
++        memcpy(temp, &msg_timestamp, 4);
++        temp[4] = (attempt & 3);
++        memcpy(&temp[5], text, tlen + 1);
++        mesh::Utils::sha256((uint8_t *)&expected_ack, 4, temp, 5 + tlen, self_id.pub_key, PUB_KEY_SIZE);
++
++        char reply[48];
++        char *sep = strchr(text, ':');
++        if (sep) {
++          *sep++ = 0;
++          trySetWifiConfigVar(text, sep, reply, sizeof(reply));
++        } else {
++          StrHelper::strzcpy(reply, "ERR use key:value (wifi_ssid/wifi_pwd/wifi_enabled)", sizeof(reply));
++        }
++
++        out_frame[0] = RESP_CODE_SENT;
++        out_frame[1] = 0; // not a flood send
++        memcpy(&out_frame[2], &expected_ack, 4);
++        est_timeout = 500;
++        memcpy(&out_frame[6], &est_timeout, 4);
++        _serial->writeFrame(out_frame, 10);
++
++        // Fabricate the delivery confirmation too: nothing is ever in flight,
++        // so no real ack will ever come back to trigger processAck().
++        out_frame[0] = PUSH_CODE_SEND_CONFIRMED;
++        memcpy(&out_frame[1], &expected_ack, 4);
++        uint32_t trip_time = 0;
++        memcpy(&out_frame[5], &trip_time, 4);
++        _serial->writeFrame(out_frame, 9);
++
++        queueLocalConfigReply(*recipient, getRTCClock()->getCurrentTimeUnique(), reply);
++        return;
++      }
++#endif
+       if (txt_type == TXT_TYPE_CLI_DATA) {
+         msg_timestamp = getRTCClock()->getCurrentTimeUnique(); // Use node's RTC instead of app timestamp to avoid tripping replay protection
+         result = sendCommandData(*recipient, msg_timestamp, attempt, text, est_timeout);
+@@ -1851,19 +2009,10 @@ void MyMesh::handleCmdFrame(size_t len) {
+       // see main.cpp's DUAL_BLE_WIFI/EXCLUSIVE_BLE_WIFI boot logic for how
+       // wifi_enabled is consumed (next boot for both; EXCLUSIVE_BLE_WIFI also
+       // needs a reboot to actually switch transport, see UITask::toggleWiFi()).
+-      if (strcmp(sp, "wifi_ssid") == 0) {
+-        StrHelper::strncpy(_prefs.wifi_ssid, np, sizeof(_prefs.wifi_ssid));
+-        savePrefs();
+-        writeOKFrame();
+-        return;
+-      } else if (strcmp(sp, "wifi_pwd") == 0) {
+-        StrHelper::strncpy(_prefs.wifi_password, np, sizeof(_prefs.wifi_password));
+-        savePrefs();
+-        writeOKFrame();
+-        return;
+-      } else if (strcmp(sp, "wifi_enabled") == 0) {
+-        _prefs.wifi_enabled = (np[0] == '1') ? 1 : 0;
+-        savePrefs();
++      if (strcmp(sp, "wifi_ssid") == 0 || strcmp(sp, "wifi_pwd") == 0 || strcmp(sp, "wifi_enabled") == 0) {
++        // Shared with the local WiFi-config contact's chat-message path, see
++        // trySetWifiConfigVar() -- same "key:value" syntax either way.
++        trySetWifiConfigVar(sp, np, NULL, 0);
+         writeOKFrame();
+         return;
+       }
+diff --git a/examples/companion_radio/MyMesh.h b/examples/companion_radio/MyMesh.h
+index 238adada..f512fae2 100644
+--- a/examples/companion_radio/MyMesh.h
++++ b/examples/companion_radio/MyMesh.h
+@@ -208,6 +208,22 @@ private:
+   void saveChannels() { _store->saveChannels(this); }
+   void saveContacts();
+ 
++#if defined(DUAL_BLE_WIFI) || defined(EXCLUSIVE_BLE_WIFI)
++  // Local WiFi-config contact ("w_<node name>"): lets a companion app set
++  // wifi_ssid/wifi_pwd/wifi_enabled via an ordinary chat message, entirely over
++  // the already-connected BLE/USB/WiFi link -- no LoRa packet is ever built or
++  // sent for it. Same principle as ZephCore's v-contact (synthetic pubkey
++  // derived from our own identity, intercepted before any real send), adapted
++  // to this codebase's real/persisted contact table (no virtual-injection hook
++  // exists here, so the contact is a genuine addContact() entry instead).
++  void ensureWifiConfigContact();
++  bool isWifiConfigContact(const ContactInfo* c) const {
++    return c != NULL && memcmp(c->id.pub_key, _wifi_contact_key, PUB_KEY_SIZE) == 0;
++  }
++  bool trySetWifiConfigVar(const char* key, const char* value, char* reply, size_t reply_size);
++  void queueLocalConfigReply(const ContactInfo &from, uint32_t sender_timestamp, const char *text);
++#endif
++
+   DataStore* _store;
+   NodePrefs _prefs;
+   uint32_t pending_login;
+@@ -232,6 +248,10 @@ private:
+ 
+   TransportKey send_scope;
+ 
++#if defined(DUAL_BLE_WIFI) || defined(EXCLUSIVE_BLE_WIFI)
++  uint8_t _wifi_contact_key[PUB_KEY_SIZE];
++#endif
++
+   uint8_t cmd_frame[MAX_FRAME_SIZE + 1];
+   uint8_t out_frame[MAX_FRAME_SIZE + 1];
+   CayenneLPP telemetry;
+-- 
+2.53.0.windows.2
+

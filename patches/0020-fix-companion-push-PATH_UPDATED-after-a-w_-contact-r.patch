@@ -1,0 +1,39 @@
+From 8141e95ae24cbe19e6213a8fd0400b84cb51298f Mon Sep 17 00:00:00 2001
+From: GNB Build <palimpseste@quidam.eu>
+Date: Tue, 1 Sep 2026 23:40:45 +0200
+Subject: [PATCH 20/22] fix(companion): push PATH_UPDATED after a "w_" contact
+ rename
+
+Confirmed on real WT2 hardware: an already-connected app never refreshes
+the contact's displayed name after a rename (ensureWifiConfigContact()
+does update it internally and persist it), no matter which unrelated
+screens are visited in the meantime -- but manually using this contact's
+"Reset path" action does immediately show the corrected name. Reusing
+the same push the mesh layer already sends for that action
+(PUSH_CODE_PATH_UPDATED via onContactPathUpdated(), harmless if no app is
+connected) right after the rename, to test whether it triggers the same
+app-side refresh automatically.
+---
+ examples/companion_radio/MyMesh.cpp | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/examples/companion_radio/MyMesh.cpp b/examples/companion_radio/MyMesh.cpp
+index f8bf790a..c2163b17 100644
+--- a/examples/companion_radio/MyMesh.cpp
++++ b/examples/companion_radio/MyMesh.cpp
+@@ -503,6 +503,12 @@ void MyMesh::ensureWifiConfigContact() {
+       StrHelper::strzcpy(existing->name, want_name, sizeof(existing->name));
+       existing->lastmod = getRTCClock()->getCurrentTime();
+       saveContacts();
++      // Nudge an already-connected app to re-fetch/redraw this contact.
++      // Confirmed on real hardware: a bare rename doesn't refresh the row by
++      // itself, but "Reset path" on this contact does -- reusing the same
++      // push the mesh layer already sends on a real path change (harmless if
++      // no app is connected, see onContactPathUpdated()'s own note).
++      onContactPathUpdated(*existing);
+     }
+     return; // already present, nothing more to do
+   }
+-- 
+2.53.0.windows.2
+

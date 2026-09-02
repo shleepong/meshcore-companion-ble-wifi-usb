@@ -41,6 +41,9 @@ boards.
   toujours disponible quel que soit le mode actif.
 - **WiFi configurable** (SSID/mot de passe), rejoint le réseau au démarrage si activé,
   à la place du BLE (jamais les deux en même temps).
+- **Configuration WiFi par chat, depuis l'application** : un contact
+  `w_<nom du nœud>` apparaît automatiquement dans la liste de contacts, pour
+  lui envoyer les réglages en messages (voir "Utilisation rapide").
 - **Page écran dédiée** ("WIFI" et "BLUETOOTH") : un appui long redémarre la carte
   dans l'autre mode.
 - **Pourcentage de batterie affiché** (au lieu d'une icône), plus une page dédiée avec
@@ -65,18 +68,27 @@ est disponible dans `docs/`.
 1. **Flasher** : `firmware/<board>/firmware-merged.bin` (board neuve, à l'offset `0x0`,
    efface tout) ou `firmware.bin` (mise à jour d'un board déjà sous MeshCore, via
    [meshcore.io/flasher](https://meshcore.io/flasher) ou en série).
-2. **Configurer le WiFi** : ouvrir la [page de configuration](https://shleepong.github.io/meshcore-companion-ble-wifi-usb/)
-   hébergée par ce dépôt (disponible en français et en anglais), en Bluetooth ou en
-   USB, aucune installation requise (Chrome ou Edge, Windows ou Android ; Safari/iOS
-   non supporté, restriction du navigateur, pas de ce firmware). **Code d'appairage
-   Bluetooth : celui affiché sur la page d'accueil de l'écran** (`Pin:XXXXXX`),
-   différent à chaque démarrage, pas une valeur fixe. Ce code ne sert qu'au tout
-   premier appairage : une fois l'appareil apparié, Windows/Android le reconnaît
-   automatiquement aux connexions suivantes (y compris après une mise à jour du
-   firmware) sans redemander de code, tant que l'appairage n'a pas été supprimé
-   manuellement côté PC/téléphone. Alternative en ligne de commande :
-   [`meshcore-cli`](https://github.com/meshcore-dev/meshcore-cli), voir
-   `set wifi_ssid` / `set wifi_pwd` / `set wifi_enabled`.
+2. **Configurer le WiFi** : trois méthodes, au choix.
+   - **Depuis l'application MeshCore** : utiliser le contact `w_<nom du nœud>`
+     figurant dans la liste des contacts pour lui envoyer les réglages en
+     message de chat : `wifi_ssid:MonReseau` et `wifi_pwd:MonMotDePasse`
+     enregistrent la configuration sans effet immédiat ; `wifi_enabled:1`
+     puis `reboot` basculent ensuite le nœud sur le WiFi, qui devient alors
+     le seul moyen de le joindre (le BLE s'éteint). Fonctionne partout où
+     l'application tourne, Safari/iOS compris.
+   - **Depuis la [page de configuration](https://shleepong.github.io/meshcore-companion-ble-wifi-usb/)**
+     hébergée par ce dépôt (disponible en français et en anglais), en
+     Bluetooth ou en USB, aucune installation requise (Chrome ou Edge,
+     Windows ou Android ; Safari/iOS non supporté, restriction du
+     navigateur, pas de ce firmware). **Code d'appairage Bluetooth : celui
+     affiché sur la page d'accueil de l'écran** (`Pin:XXXXXX`), différent à
+     chaque démarrage, pas une valeur fixe. Ce code ne sert qu'au tout
+     premier appairage : une fois l'appareil apparié, Windows/Android le
+     reconnaît automatiquement aux connexions suivantes (y compris après une
+     mise à jour du firmware) sans redemander de code, tant que l'appairage
+     n'a pas été supprimé manuellement côté PC/téléphone.
+   - **En ligne de commande** : [`meshcore-cli`](https://github.com/meshcore-dev/meshcore-cli),
+     voir `set wifi_ssid` / `set wifi_pwd` / `set wifi_enabled`.
 3. **Enregistrer** sur la page web : sauvegarde seulement, sans redémarrer. Un
    message indique ensuite si un redémarrage est réellement nécessaire pour que le
    changement prenne effet, avec un bouton dédié pour le faire depuis la page
@@ -136,6 +148,9 @@ maintaining two different mechanisms depending on the board, only the exclusive 
   always available whichever mode is active.
 - **Configurable WiFi** (SSID/password), joins the network at boot if enabled,
   instead of BLE (never both at the same time).
+- **Chat-based WiFi setup, from the app**: a `w_<node name>` contact appears
+  automatically in the contact list, to send it the settings as messages
+  (see "Quick start").
 - **Dedicated screen page** ("WIFI" and "BLUETOOTH"): a long press reboots the board
   into the other mode.
 - **Battery percentage displayed** (instead of an icon), plus a dedicated page with
@@ -161,17 +176,26 @@ troubleshooting) is available in `docs/`.
 1. **Flash**: `firmware/<board>/firmware-merged.bin` (new board, at offset `0x0`,
    erases everything) or `firmware.bin` (updating a board already running MeshCore,
    via [meshcore.io/flasher](https://meshcore.io/flasher) or serial).
-2. **Configure WiFi**: open the [configuration page](https://shleepong.github.io/meshcore-companion-ble-wifi-usb/)
-   hosted by this repository (available in French and English), over Bluetooth or
-   USB, no installation required (Chrome or Edge, Windows or Android; Safari/iOS not
-   supported, a browser restriction, not this firmware's). **Bluetooth pairing code:
-   the one shown on the device's home screen** (`Pin:XXXXXX`), different on every
-   boot, not a fixed value. This code is only needed for the very first pairing:
-   once paired, Windows/Android reconnects automatically on later connections
-   (including after a firmware update) without asking for the code again, as long
-   as the pairing hasn't been manually removed on the PC/phone side. Command-line
-   alternative: [`meshcore-cli`](https://github.com/meshcore-dev/meshcore-cli), see
-   `set wifi_ssid` / `set wifi_pwd` / `set wifi_enabled`.
+2. **Configure WiFi**: three methods, take your pick.
+   - **From the MeshCore app**: use the `w_<node name>` contact listed in
+     your contacts, and send it the settings as a chat message:
+     `wifi_ssid:MyNetwork` and `wifi_pwd:MyPassword` save the configuration
+     with no immediate effect; `wifi_enabled:1` then `reboot` then switch the
+     node onto WiFi, which becomes the only way to reach it (BLE turns off).
+     Works wherever the app runs, Safari/iOS included.
+   - **From the [configuration page](https://shleepong.github.io/meshcore-companion-ble-wifi-usb/)**
+     hosted by this repository (available in French and English), over
+     Bluetooth or USB, no installation required (Chrome or Edge, Windows or
+     Android; Safari/iOS not supported, a browser restriction, not this
+     firmware's). **Bluetooth pairing code: the one shown on the device's
+     home screen** (`Pin:XXXXXX`), different on every boot, not a fixed
+     value. This code is only needed for the very first pairing: once
+     paired, Windows/Android reconnects automatically on later connections
+     (including after a firmware update) without asking for the code again,
+     as long as the pairing hasn't been manually removed on the PC/phone
+     side.
+   - **Command line**: [`meshcore-cli`](https://github.com/meshcore-dev/meshcore-cli),
+     see `set wifi_ssid` / `set wifi_pwd` / `set wifi_enabled`.
 3. **Save** on the web page: only saves the settings, without rebooting. A message
    then indicates whether a reboot is actually needed for the change to take
    effect, with a dedicated button to do it right from the page.
